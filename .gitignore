@@ -1,4 +1,8 @@
 .venv/
 .playwright-mcp/
+__pycache__/
 data/
+outputs/
+features/
+models/
 *.zip

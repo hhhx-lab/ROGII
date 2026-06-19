@@ -2,7 +2,7 @@
 
 # ROG-II-
 
-**A Kaggle competition workspace for wellbore geology prediction.**
+**An engineering workspace for reproducible wellbore geology prediction.**
 
 ![Kaggle Competition](https://img.shields.io/badge/Kaggle-Competition-20BEFF?style=flat-square)
 ![Task](https://img.shields.io/badge/Task-TVT%20Prediction-7c3aed?style=flat-square)
@@ -13,15 +13,26 @@
 
 </div>
 
-> Build models that help predict geology along a horizontal wellbore.
+> Build a defensible TVT prediction workflow, not just a one-off Kaggle submission.
 
-This repository is the working base for the Kaggle competition **ROGII - Wellbore Geology Prediction**. The goal is to predict **TVT (True Vertical Thickness)** for horizontal well evaluation zones using trajectory, log, and vertical reference data.
+This repository is the working base for the Kaggle competition **ROGII - Wellbore Geology Prediction**. The goal is to predict **TVT (True Vertical Thickness)** for horizontal well evaluation zones using trajectory, log, and vertical reference data, with a workflow strong enough to compete for the top of the leaderboard.
 
-The competition is a notebook-only code contest with RMSE scoring. Kaggle exposes the public description, the data bundle, and the submission format through the competition page. This repo keeps the brief, the download path, and the project layout together so the next modeling step starts fast.
+The competition is a notebook-only code contest with RMSE scoring. Kaggle exposes the public description, the data bundle, and the submission format through the competition page. This repo treats that setup as an engineering problem: define the data contracts, build a validation loop that mimics hidden wells, keep a simple baseline as a control, and only promote models that improve in a measurable and explainable way.
 
 ## Competition Brief
 
 ROGII asks participants to build a model for drilling-time geology prediction. The data includes horizontal well trajectories, geological surfaces, well logs, typewell reference logs, and per-well visualizations. The hidden test set replaces the visible sample data when Kaggle re-runs a submission.
+
+## Engineering Method
+
+The project direction is deliberately practical:
+
+- use `TVT_input` continuation as the control baseline;
+- simulate hidden intervals from training wells before trusting any model;
+- add GR, trajectory, and typewell features only when they beat the baseline under cross-validation;
+- report errors by well and by failure type, not only by one aggregate RMSE;
+- keep the final notebook deterministic and runnable with Kaggle internet disabled.
+- treat each leaderboard submission as a tracked experiment with a local CV score and a hypothesis.
 
 ## What You Get
 
