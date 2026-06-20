@@ -18,7 +18,7 @@
 | residual HGB model | 已完成 | 5-fold GroupKFold OOF 完成，`selected_alpha=0.75`，已生成 model/config/test prediction/submission |
 | CV/report/failure/importance | 已完成 | `reports/residual_geometry_cv_report.md`：baseline RMSE 15.9099，geometry residual RMSE 14.9900，改善 0.9198，`PROMOTE_TO_PART3_INPUT` |
 | multi-mask residual 验证 | 已完成 | `reports/residual_geometry_multimask_report.md`：5 类 mask、每类 773 井 split，全部 row-weighted RMSE 改善 |
-| Part 2 完成审计 | 待运行 | `scripts/validate_part2_outputs.py` 待执行 |
+| Part 2 完成审计 | 已完成 | `scripts/validate_part2_outputs.py` 通过，`reports/part2_completion_audit.md` 记录 `checks=34 failures=0` |
 
 ## 本机与服务器策略
 
