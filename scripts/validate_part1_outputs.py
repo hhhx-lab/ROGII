@@ -37,6 +37,8 @@ REQUIRED_REPORTS = [
     REPORT_DIR / "baseline_multimask_report.md",
     REPORT_DIR / "baseline_submission_report.md",
     REPORT_DIR / "part1_quality_review.md",
+    REPORT_DIR / "data_raw_review.md",
+    REPORT_DIR / "part1_plan_implementation_review.md",
 ]
 SUBMISSION_FILES = [
     SUBMISSION_DIR / "b0_constant_last_submission.csv",
@@ -103,6 +105,25 @@ def main() -> int:
         {
             "check": "data contract compares against EDA inventory",
             "status": pass_fail("## EDA Inventory Cross-Check" in contract_report and "| False" not in contract_report),
+        }
+    )
+    checks.append(
+        {
+            "check": "data contract documents optional test typewell Geology",
+            "status": pass_fail("optional for test typewell files" in contract_report and "must not assume test Geology" in contract_report),
+        }
+    )
+    raw_review = (REPORT_DIR / "data_raw_review.md").read_text()
+    checks.append(
+        {
+            "check": "raw-data review documents PPTX and sample submission",
+            "status": pass_fail("PPTX 共 14 页" in raw_review and "sample_submission.csv" in raw_review),
+        }
+    )
+    checks.append(
+        {
+            "check": "raw-data review marks visible test as sanity only",
+            "status": pass_fail("visible test 只能用于提交格式" in raw_review and "不能当作独立验证集" in raw_review),
         }
     )
 
@@ -199,6 +220,18 @@ def main() -> int:
             "status": pass_fail("truth-derived diagnostics" in cv_report and "must not read them as predictors" in cv_report),
         }
     )
+    checks.append(
+        {
+            "check": "cv_design documents official-tail priority and stress masks",
+            "status": pass_fail("Primary leaderboard proxy masks" in cv_report and "Robustness stress-test masks" in cv_report),
+        }
+    )
+    checks.append(
+        {
+            "check": "cv_design documents optional Geology boundary",
+            "status": pass_fail("optional on test typewell files" in cv_report and "Geology-derived columns" in cv_report),
+        }
+    )
 
     multimask = pd.read_csv(OUTPUT_DIR / "baseline_multimask_overall.csv")
     checks.append(
@@ -240,9 +273,43 @@ def main() -> int:
             "evidence": ",".join(sorted(typewell_columns & set(failures.columns))),
         }
     )
+    plan_review = (REPORT_DIR / "part1_plan_implementation_review.md").read_text()
+    checks.append(
+        {
+            "check": "part1 plan implementation review passes",
+            "status": pass_fail("- Status: PASS" in plan_review and "Visible test wells overlap training IDs" in plan_review),
+        }
+    )
 
     sample = pd.read_csv(ROOT / "data" / "raw" / "sample_submission.csv")
     parsed_sample = parse_submission_ids(sample)
+    sample_wells = set(parsed_sample["well"])
+    train_well_ids = {path.name.replace("__horizontal_well.csv", "") for path in TRAIN_DIR.glob("*__horizontal_well.csv")}
+    test_typewell_has_no_geology = all(
+        "Geology" not in pd.read_csv(ROOT / "data" / "raw" / "test" / f"{well}__typewell.csv", nrows=0).columns
+        for well in sample_wells
+    )
+    checks.append(
+        {
+            "check": "visible sample wells overlap train and are not independent validation",
+            "status": pass_fail(sample_wells.issubset(train_well_ids)),
+            "evidence": ",".join(sorted(sample_wells)),
+        }
+    )
+    checks.append(
+        {
+            "check": "visible test typewell lacks Geology and scripts must fallback",
+            "status": pass_fail(test_typewell_has_no_geology),
+            "evidence": f"wells={len(sample_wells)}",
+        }
+    )
+    submission_report = (REPORT_DIR / "baseline_submission_report.md").read_text()
+    checks.append(
+        {
+            "check": "submission report marks visible examples as sanity only",
+            "status": pass_fail("sanity checks only" in submission_report and "do not tune" in submission_report),
+        }
+    )
     for path in SUBMISSION_FILES:
         exists = path.exists()
         if exists:

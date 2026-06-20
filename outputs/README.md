@@ -11,6 +11,7 @@ Generated intermediate artifacts are intentionally not committed. Recreate them 
 .venv/bin/python scripts/evaluate_baseline_multimask.py
 .venv/bin/python scripts/analyze_baseline_failures.py
 .venv/bin/python scripts/make_baseline_submissions.py
+.venv/bin/python scripts/review_part1_plan_alignment.py
 .venv/bin/python scripts/validate_part1_outputs.py
 ```
 

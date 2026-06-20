@@ -14,6 +14,7 @@
 | failure analysis 图里有 typewell GR/Geology，但候选表缺结构化字段 | 后续自动筛选 failure case 时无法用 typewell/geology 信息 | `outputs/failure_case_candidates.csv` 增加 `typewell_rows/typewell_tvt_span/typewell_gr_missing_rate/typewell_geology_label_count/typewell_geology_labels` |
 | failure type 报告只显示出现过的类别 | 容易误以为没有设计 `abrupt_shift/gr_transition` | `reports/baseline_failure_analysis.md` 现在保留所有预定义 failure type，未出现类别记 0 |
 | 最终审计覆盖不够细 | 只证明文件存在，不足以证明防泄漏和结构化诊断可用 | `scripts/validate_part1_outputs.py` 从 34 项扩展到 40 项，新增 EDA cross-check、mask 防泄漏、truth-derived non-feature 文档、typewell/geology 诊断、质量报告和进度文档检查 |
+| Part 1 计划按 raw-data 复核后新增边界，但审计未同步 | 计划已写 test `Geology` optional、visible test 不可调参、tail masks 主优先级，但完成审计无法强制这些约束 | 新增 `scripts/review_part1_plan_alignment.py` 与 `reports/part1_plan_implementation_review.md`，并将最终审计扩展到 51 项，覆盖 PPTX/sample、visible-test overlap、test typewell fallback、CV 优先级和 submission sanity 声明 |
 
 ## 重新验证结果
 
@@ -27,7 +28,8 @@
 | Multi-mask baseline | 7 类 mask 全覆盖 |
 | Failure analysis | 773 candidates，20 张 worst-well 图 |
 | Submission QA | 7 个 baseline submission 均 14,151 行、3 口 visible wells、无空预测 |
-| 最终审计 | 40 checks, 0 failures |
+| 计划-实现复核 | 13 checks, 0 failures |
+| 最终审计 | 51 checks, 0 failures |
 
 ## 仍需记住的边界
 
@@ -37,6 +39,7 @@
 | `B3/B4` 未实现 | 计划允许 Part 1 至少完成 B0/B1/B2；B3/B4 应在 Part 2/4 有稳定 residual 后再做，不应现在引入过拟合风险 |
 | failure type 是启发式初判 | 已足够用于第一批 failure analysis，但不是地质解释终稿；Part 3 需要结合 GR/typewell 对齐复核 |
 | `baseline_predictions_train_hidden.csv` 很大 | 本地约 2.7G，按计划作为 residual 入口保留在 `outputs/`，不进入 git |
+| Visible test 与 train ID 重合 | 3 口 visible test 只能用于格式和运行 sanity，不可用于调参、offset 选择或 blend 权重选择 |
 
 ## 当前可进入 Part 2 的证据
 
@@ -46,4 +49,5 @@
 - `outputs/failure_case_candidates.csv`
 - `reports/baseline_cv_report.md`
 - `reports/baseline_failure_analysis.md`
+- `reports/part1_plan_implementation_review.md`
 - `reports/part1_completion_audit.md`

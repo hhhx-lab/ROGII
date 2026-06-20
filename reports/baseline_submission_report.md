@@ -6,6 +6,8 @@
 
 ## Visible Example Aggregate RMSE
 
+These visible examples overlap training wells and are format/runtime sanity checks only; do not tune modeling decisions from these three wells.
+
 | data_hash    | baseline           | well                  |   predicted_rows |   known_allowed_end_row |   pred_min |   pred_max |   baseline_slope |   visible_train_rmse |
 |:-------------|:-------------------|:----------------------|-----------------:|------------------------:|-----------:|-----------:|-----------------:|---------------------:|
 | 46fd84d5e7e1 | B0_constant_last   | __visible_aggregate__ |            14151 |                     nan |    11604.8 |    12223.5 |              nan |              11.5393 |

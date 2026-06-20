@@ -17,7 +17,8 @@
 | 多 mask baseline 验证 | 已完成 | `reports/baseline_multimask_report.md` 显示 7 类 mask 下 B0 均为最优 |
 | Baseline B0/B1/B2 | 已完成 | B0、B1、B2(K=50/100/200/500) 已进入 CV 和 submission 控制组 |
 | Failure analysis | 已完成 | 已生成 773 口井候选表、worst 20 图表和失败类型统计 |
-| Part 1 完成审计 | 已完成 | `reports/part1_completion_audit.md`：40 项检查，0 个失败 |
+| Part 1 计划-实现复核 | 已完成 | `reports/part1_plan_implementation_review.md`：13 项检查，0 个失败 |
+| Part 1 完成审计 | 已完成 | `reports/part1_completion_audit.md`：51 项检查，0 个失败 |
 | 二次质量复核 | 已完成 | `reports/part1_quality_review.md` 记录发现问题、修复和剩余边界 |
 
 ## 实施顺序
@@ -46,7 +47,8 @@
 | 每类 mask 覆盖井数 | 773 |
 | failure candidates | 773 |
 | worst-well 诊断图 | 20 张 |
-| Part 1 审计 | 40 checks, 0 failures |
+| Part 1 计划-实现复核 | 13 checks, 0 failures |
+| Part 1 审计 | 51 checks, 0 failures |
 
 ## 当前工程结论
 
@@ -57,7 +59,7 @@
 
 ## 最终审计结果
 
-`scripts/validate_part1_outputs.py` 已运行通过，生成 `reports/part1_completion_audit.md`。二次质量复核发现并修补了 EDA 交叉核验、公共 mask 防泄漏入口、truth-derived split 诊断列边界、failure type 零计数展示和 typewell/geology 结构化诊断。审计覆盖：
+`scripts/review_part1_plan_alignment.py` 已运行通过，生成 `reports/part1_plan_implementation_review.md`。`scripts/validate_part1_outputs.py` 已运行通过，生成 `reports/part1_completion_audit.md`。二次质量复核发现并修补了 EDA 交叉核验、公共 mask 防泄漏入口、truth-derived split 诊断列边界、failure type 零计数展示、typewell/geology 结构化诊断，以及 raw-data 复核后新增的 visible-test/typewell-Geology/CV-priority 边界。审计覆盖：
 
 - Part 1 要求的关键 output/report 是否存在；
 - `data_version.json` 必要字段和井数；
@@ -67,7 +69,11 @@
 - B0/B1/B2 及 B2 K variants 是否都进入验证；
 - 逐行 baseline prediction 行数是否匹配；
 - CV split mask 类型和每类井数是否达标；
+- CV 设计是否明确 original/trailing tail 为主 proxy、mid/random 为压力测试；
+- visible test 是否被明确限制为 sanity check；
+- test typewell 无 Geology 时是否要求 fallback；
 - failure candidates、worst-well 图表和 failure type 是否达标；
+- Part 1 计划-实现复核是否通过；
 - baseline submission 是否行数、列名、非空预测均有效。
 
 ## 风险与处理

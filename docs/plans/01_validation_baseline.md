@@ -30,17 +30,32 @@ data/raw/
 outputs/
 |-- data_contract_summary.csv
 |-- baseline_cv_by_well.csv
+|-- baseline_overall_metrics.csv
 |-- baseline_predictions_train_hidden.csv
 |-- cv_splits.csv
+|-- baseline_multimask_by_split.csv
+|-- baseline_multimask_overall.csv
 `-- failure_case_candidates.csv
 
 reports/
 |-- data_contract_report.md
 |-- baseline_cv_report.md
 |-- cv_design.md
-`-- baseline_failure_analysis.md
+|-- baseline_multimask_report.md
+|-- baseline_failure_analysis.md
+|-- baseline_submission_report.md
+|-- data_raw_review.md
+|-- part1_plan_implementation_review.md
+|-- part1_quality_review.md
+`-- part1_completion_audit.md
 
 submissions/
+|-- b0_constant_last_submission.csv
+|-- b1_linear_md_submission.csv
+|-- b2_tail_slope_k50_submission.csv
+|-- b2_tail_slope_k100_submission.csv
+|-- b2_tail_slope_k200_submission.csv
+|-- b2_tail_slope_k500_submission.csv
 `-- baseline_tail_slope_submission.csv
 ```
 
@@ -450,8 +465,11 @@ Part 1 完成必须满足：
 outputs/baseline_cv_by_well.csv
 outputs/baseline_predictions_train_hidden.csv
 outputs/cv_splits.csv
+outputs/failure_case_candidates.csv
 reports/baseline_cv_report.md
 reports/baseline_failure_analysis.md
+reports/part1_plan_implementation_review.md
+reports/part1_completion_audit.md
 ```
 
 这些文件是 residual model 的训练和比较基础。

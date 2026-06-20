@@ -112,6 +112,8 @@ def main() -> int:
         "",
         "## Visible Example Aggregate RMSE",
         "",
+        "These visible examples overlap training wells and are format/runtime sanity checks only; do not tune modeling decisions from these three wells.",
+        "",
         aggregate.round(4).to_markdown(index=False),
         "",
         "## Per-Well Diagnostics",
