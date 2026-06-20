@@ -2,5 +2,6 @@ kaggle
 matplotlib
 numpy
 pandas
+pyarrow
 scikit-learn
 tabulate
