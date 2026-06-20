@@ -46,7 +46,7 @@ Typewell files must provide:
 
 - `TVT`, vertical depth index;
 - `GR`, vertical reference gamma ray;
-- `Geology`, formation label.
+- `Geology`, formation label in training typewell files; optional or absent on visible test typewell files.
 
 Submission files must provide:
 
@@ -82,7 +82,7 @@ Useful residual features:
 - `Z`, `MD`, and trajectory curvature;
 - GR rolling mean, standard deviation, and missingness flags;
 - typewell GR statistics near candidate TVT;
-- formation-label indicators from typewell alignment.
+- optional formation-label indicators from typewell alignment, only when the target test schema provides labels.
 
 ### Geological Constraint Checks
 

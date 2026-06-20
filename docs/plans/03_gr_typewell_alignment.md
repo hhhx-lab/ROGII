@@ -155,9 +155,12 @@ typewell_TVT_max
 typewell_GR_mean
 typewell_GR_std
 typewell_GR_missing_rate
+geology_available
 geology_label_count
 dominant_geology_label
 ```
+
+`TVT/GR` 是 train/test 都稳定存在的 typewell 信息；`Geology` 在训练 typewell 中存在，但 visible test typewell 没有。所有 Geology 派生特征必须在 `geology_available=0` 时自动置空并回退到 GR-only 路线。
 
 ### 4.2 Baseline TVT 附近采样
 
@@ -176,6 +179,8 @@ distance_to_geology_boundary
 nearby_geology_change_flag
 ```
 
+其中 `typewell_geology_at_baseline`、`distance_to_geology_boundary`、`nearby_geology_change_flag` 是 optional 特征；如果 test typewell 缺少 `Geology`，这些列必须生成为空值或安全默认值，并保留 `geology_available=0`。
+
 越界处理：
 
 - 如果 `baseline_tvt` 超出 typewell TVT 范围，设置 `typewell_out_of_range = 1`；
@@ -183,6 +188,12 @@ nearby_geology_change_flag
 - alignment 模块对 out-of-range 点降权或禁用。
 
 ### 4.3 Geology label 编码
+
+Geology label 只能作为 optional module：
+
+- train typewell 有 `Geology`，可用于 CV 分层、failure analysis 和可选模型；
+- visible test typewell 没有 `Geology`，因此 leaderboard 主 pipeline 必须在无 Geology 时正常运行；
+- Geology 模型成员必须和 GR-only typewell 模型分开评估，不能让 final submission 依赖测试侧不存在的列。
 
 初版：
 
@@ -201,11 +212,48 @@ nearby_geology_change_flag
 
 - 不做基于 `TVT` 真值 residual 的 label target encoding，除非严格 OOF；
 - rare label 合并规则必须只由训练 label 频次决定；
-- test 中新 label 归入 `OTHER`。
+- test 中新 label 归入 `OTHER`；
+- test 中没有 Geology 时，全部 Geology 编码列置为 safe missing，并由模型或 ensemble fallback 处理。
 
-## 5. GR / Typewell 对齐计划
+## 5. Horizontal Self-GR 对齐计划
 
-### 5.1 对齐目标
+PPTX 明确提示：horizontal well 的 GR 可能比 typewell 更有分辨率，PS 前 horizontal GR 与 PS 后 horizontal GR 的形态相关性有时比直接匹配 typewell 更强。因此 Part 3 不能只做 typewell 对齐，还要先做或并行做 horizontal self-GR alignment。
+
+### 5.1 目标
+
+用 PS 前已知段的 horizontal GR + 已知 `TVT_input` 作为本井局部模板，匹配 PS 后 hidden interval 的 horizontal GR 形态，判断 baseline TVT 是否需要整体偏移、变陡、变平或反向。
+
+### 5.2 特征
+
+```text
+self_gr_tail_mean
+self_gr_tail_std
+self_gr_hidden_window_mean
+self_gr_hidden_window_std
+self_gr_tail_hidden_corr
+self_gr_best_lag_rows
+self_gr_best_lag_similarity
+self_gr_motif_confidence
+self_gr_quality_flag
+```
+
+候选方法：
+
+- PS 前 tail window 与 hidden rolling window 的 z-score correlation；
+- peak/trough motif matching；
+- GR gradient sign consistency；
+- known tail TVT slope 与 hidden GR regime change 的交互；
+- low-variance 或 high-missing GR 时禁用并 fallback。
+
+### 5.3 验收
+
+- self-GR 特征必须在 original hidden 和 trailing masks 上单独验证；
+- 如果只改善 mid/random mask 而不改善官方尾段 proxy，不进入 balanced submission；
+- self-GR 与 typewell alignment 的贡献要分开报告，避免两个相关模块互相掩盖。
+
+## 6. GR / Typewell 对齐计划
+
+### 6.1 对齐目标
 
 如果 baseline TVT 有偏移，那么 horizontal GR 在某个 candidate TVT offset 处可能与 typewell GR 更相似。
 
@@ -218,7 +266,7 @@ offset in [-offset_window, +offset_window]
 
 找到最相似的 offset，并把 offset 或相似度作为特征。
 
-### 5.2 简单滑窗相关
+### 6.2 简单滑窗相关
 
 参数：
 
@@ -256,7 +304,7 @@ positive offset means predicted TVT should move deeper/larger
 
 所有报告和模型必须使用同一符号约定，避免 blend 时方向反了。
 
-### 5.3 分段对齐
+### 6.3 分段对齐
 
 不要每一行独立对齐，否则噪声大。
 
@@ -274,7 +322,7 @@ positive offset means predicted TVT should move deeper/larger
 - typewell GR 方差过低时不对齐；
 - best 和 second best similarity 差距太小时 confidence 降低。
 
-### 5.4 DTW 对齐实验
+### 6.4 DTW 对齐实验
 
 如果滑窗相关在 CV 上有效，再做 DTW：
 
@@ -291,9 +339,9 @@ positive offset means predicted TVT should move deeper/larger
 
 所以 DTW 不作为第一版主线，只作为后期增强。
 
-## 6. 模型结构
+## 7. 模型结构
 
-### 6.1 GR residual model
+### 7.1 GR residual model
 
 特征：
 
@@ -314,7 +362,7 @@ outputs/residual_gr_oof.csv
 reports/residual_gr_cv_report.md
 ```
 
-### 6.2 Typewell residual model
+### 7.2 Typewell residual model
 
 特征：
 
@@ -335,7 +383,7 @@ outputs/residual_typewell_oof.csv
 reports/residual_typewell_cv_report.md
 ```
 
-### 6.3 Alignment direct correction
+### 7.3 Alignment direct correction
 
 额外实验：
 
@@ -354,7 +402,7 @@ alignment_residual = f(best_offset, similarity_confidence)
 - 判断对齐信号本身是否有预测力；
 - 给模型 ensemble 提供独立成员。
 
-## 7. 验证切片
+## 8. 验证切片
 
 GR/typewell 模块不能只看 overall RMSE。
 
@@ -370,9 +418,26 @@ GR/typewell 模块不能只看 overall RMSE。
 | typewell similarity high | 对齐可信场景 |
 | typewell similarity low | 对齐不可信场景 |
 
-## 8. 防过拟合规则
+## 9. Offset Well / Dip Prior 候选模块
 
-### 8.1 GR 不能变成泄漏代理
+PPTX 指出 offset well、钻井方位和地层倾角会影响 TVT 变化。该模块作为 Part 3 后半段或 Part 4 前置增强候选，不抢在 GR/typewell 主线前面。
+
+可实现方向：
+
+- 用 `X/Y` 建立邻井索引，提取邻近训练井的 residual/failure 类型统计；
+- 用 `MD/X/Y/Z` 估计水平段方位、垂向变化和轨迹曲率；
+- 在训练 CV 中用 formation surfaces 做诊断标签，但 final test 特征不能直接读取这些训练-only surface 列；
+- 输出 `neighbor_prior_confidence`，低邻域密度或跨区过远时自动禁用。
+
+验收标准：
+
+- 必须使用 group/well OOF，不能把同井真值或 visible test 重合井信息泄漏进特征；
+- 只有在 tail proxy CV 和 worst-well 分析均改善时才进入 ensemble；
+- 作为 optional module，不影响 GR-only/typewell-only pipeline 可运行性。
+
+## 10. 防过拟合规则
+
+### 10.1 GR 不能变成泄漏代理
 
 不能用 hidden target 真值构造 GR 特征。
 
@@ -380,7 +445,7 @@ GR/typewell 模块不能只看 overall RMSE。
 
 - hidden rows 的 GR；
 - typewell GR；
-- typewell Geology；
+- typewell Geology，前提是对应 test 文件真实提供该列；否则只能用于训练诊断或 optional fallback；
 - baseline TVT 附近 typewell 信息。
 
 不允许：
@@ -389,7 +454,7 @@ GR/typewell 模块不能只看 overall RMSE。
 - 用训练-only formation surface 直接推 test；
 - 根据 visible test 3 井手调 offset。
 
-### 8.2 Alignment 需要 confidence
+### 10.2 Alignment 需要 confidence
 
 如果相似度低：
 
@@ -397,7 +462,7 @@ GR/typewell 模块不能只看 overall RMSE。
 - 只作为弱特征；
 - ensemble 中降权。
 
-### 8.3 按质量路由
+### 10.3 按质量路由
 
 ```text
 if GR_quality_low:
@@ -408,7 +473,7 @@ else:
     use balanced residual
 ```
 
-### 8.4 Typewell 对齐的计算预算
+### 10.4 Typewell 对齐的计算预算
 
 滑窗搜索可能很慢。第一版必须限制计算量：
 
@@ -426,7 +491,7 @@ baseline + geometry + GR
 
 或只对 high-risk wells 启用 typewell alignment。
 
-## 9. Failure Analysis
+## 11. Failure Analysis
 
 要回答：
 
@@ -434,7 +499,7 @@ baseline + geometry + GR
 - typewell 对齐后 worst wells 是否减少；
 - 对齐失败的井有什么共同特征；
 - GR 缺失时模型是否退化；
-- Geology boundary 附近是否改善。
+- Geology boundary 附近是否改善，如果对应 test/schema 提供 Geology；否则只做训练诊断。
 
 输出：
 
@@ -453,7 +518,7 @@ reports/figures/typewell_alignment_examples/
 - best offset curve；
 - Geology label bands。
 
-### 9.1 对齐有效性判定
+### 11.1 对齐有效性判定
 
 不能只看模型分数，还要验证 alignment 是否有物理意义：
 
@@ -463,11 +528,12 @@ reports/figures/typewell_alignment_examples/
 - Geology boundary 附近 offset 是否更有解释力；
 - alignment correction 是否降低 baseline residual，而不是放大噪声。
 
-## 10. 本阶段完成标准
+## 12. 本阶段完成标准
 
 Part 3 完成必须满足：
 
 - GR features 完成；
+- horizontal self-GR features 完成；
 - typewell features 完成；
 - simple alignment features 完成；
 - GR residual CV 完成；
@@ -476,7 +542,7 @@ Part 3 完成必须满足：
 - 有 alignment confidence 和 fallback 机制；
 - 产出 aggressive submission。
 
-## 11. 下一阶段入口条件
+## 13. 下一阶段入口条件
 
 进入 Part 4 前必须有：
 

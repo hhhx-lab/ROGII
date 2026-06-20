@@ -89,6 +89,8 @@ The competition bundle is organized into `train/` and `test/` folders. Each well
 - `.png` visualizations for training wells;
 - `sample_submission.csv` for the target format.
 
+Raw data and PPTX findings that affect the modeling plan are documented in [`reports/data_raw_review.md`](reports/data_raw_review.md).
+
 ## Local Download
 
 ```bash

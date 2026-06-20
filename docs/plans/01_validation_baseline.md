@@ -83,11 +83,19 @@ MD, X, Y, Z, ANCC, ASTNU, ASTNL, EGFDU, EGFDL, BUDA, TVT, GR, TVT_input
 MD, X, Y, Z, GR, TVT_input
 ```
 
-typewell 必须包含：
+训练 typewell 必须包含：
 
 ```text
 TVT, GR, Geology
 ```
+
+测试 typewell 必须包含：
+
+```text
+TVT, GR
+```
+
+`Geology` 在 visible test typewell 中不存在，因此测试侧只能视为 optional。后续模型不能假设 test typewell 一定有 `Geology`。
 
 检查内容：
 
@@ -138,7 +146,7 @@ created_at
 
 ### 4.1 背景
 
-训练井中 `TVT_input` 已经有 NaN 隐藏段，同时 `TVT` 保留完整真值。这个结构非常接近 Kaggle hidden rerun 任务。
+训练井中 `TVT_input` 已经有 NaN 隐藏段，同时 `TVT` 保留完整真值。直接检查 `data/raw` 后确认 773 口训练井全部是从 PS 到井尾的单一隐藏尾段，这个结构非常接近 Kaggle hidden rerun 任务。
 
 验证定义：
 
@@ -147,6 +155,8 @@ known_rows = TVT_input not null
 target_rows = TVT_input is null
 truth = TVT[target_rows]
 ```
+
+visible test 的 3 口井也全部是 PS 后尾段预测，且 well ID 与 train 重合；它们只能用于格式和脚本 sanity check，不能作为独立验证集或调参依据。
 
 ### 4.2 脚本
 
@@ -199,7 +209,12 @@ scripts/evaluate_baseline_cv.py
 
 ### 5.1 为什么需要多 mask
 
-Kaggle hidden test 的缺失区间可能不完全等同训练井原始 `TVT_input` NaN 区间。只使用原始隐藏段，模型可能过度适配一种缺失模式。
+Kaggle hidden test 的缺失区间从当前公开结构看很可能仍是 PS 后尾段，但缺失长度、PS 位置、GR 缺失率和井型可能变化。只使用原始隐藏段，模型可能过度适配一种长度与起点分布。
+
+因此验证优先级分两层：
+
+- 主 leaderboard proxy：`original_hidden`、`trailing_short`、`trailing_long`；
+- 鲁棒性压力测试：`mid_contiguous`、`random_contiguous`、`high_gr_missing`、`high_curvature`。
 
 ### 5.2 Mask 类型
 
@@ -254,6 +269,7 @@ mask_seed
 - 特征不能使用 mask 区间的真实 `TVT`；
 - 允许使用 mask 区间的 `MD/X/Y/Z/GR`，因为测试集也提供；
 - 允许使用 typewell，因为测试集也提供；
+- `Geology` 只在训练 typewell 中稳定存在，test 不保证可用；所有 Geology 特征必须 optional；
 - 禁止使用训练-only formation surface 作为最终 test 特征，除非仅用于分析或训练辅助。
 - 人工 mask 后必须重新生成该 split 下的 `TVT_input_masked`，baseline 和所有“已知段相关特征”只能看 masked 后的已知段；
 - 对 mid-section mask，不允许使用 mask 后方的 `TVT_input` 作为“未来已知段”，除非该实验明确模拟离线补全而非 Kaggle hidden rerun；

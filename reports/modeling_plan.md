@@ -61,7 +61,7 @@ Validation reports should include:
 | A | Tail-slope extrapolation | Strong control baseline, fully explainable | Weak near faults or formation changes | Always keep as baseline |
 | B | Geometry-only residual model | Uses `MD`, `X`, `Y`, `Z`, local slope, curvature | May learn shallow shortcuts | First ML iteration |
 | C | GR-aware residual model | Adds rock-response signal from gamma ray | GR has many missing values and may be noisy | After validation masking is stable |
-| D | Typewell correlation model | Uses vertical reference log and formation labels | Alignment is nontrivial | Main geology-aware upgrade |
+| D | Typewell correlation model | Uses vertical reference log, with formation labels only when available | Alignment is nontrivial | Main geology-aware upgrade |
 | E | Hybrid system | Baseline extrapolation plus residual corrections | More moving parts | Recommended production path |
 | F | Sequence model | Learns full well trajectory patterns | Harder to validate and explain under notebook runtime | Later experiment only |
 

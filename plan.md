@@ -6,7 +6,7 @@
 
 核心任务：
 
-> 给定水平井轨迹、已知段 `TVT_input`、Gamma Ray 日志、垂直 typewell 参考井和地层标签，预测隐藏区间每一行的 `tvt`。
+> 给定水平井轨迹、已知段 `TVT_input`、Gamma Ray 日志、垂直 typewell 参考井，以及训练侧可用但测试侧不保证存在的可选地层标签，预测隐藏区间每一行的 `tvt`。
 
 核心路线：
 
@@ -164,7 +164,7 @@ typewell 文件包含：
 
 - `TVT`: vertical depth index；
 - `GR`: 垂直参考 Gamma Ray；
-- `Geology`: 地层标签。
+- `Geology`: 地层标签，训练 typewell 可用；visible test typewell 目前没有该列，因此 leaderboard pipeline 不能强依赖它。
 
 ### 3.4 submission 契约
 
@@ -215,6 +215,10 @@ truth = TVT[target_rows]
 
 hidden test 的缺失区间可能与训练默认缺失模式不同，所以需要多 mask。
 
+直接检查 `data/raw` 后确认：773 口训练井和 3 口 visible test 均是 PS 后隐藏到井尾的 tail prediction。多 mask 的主排序应优先看 `original_hidden`、`trailing-short`、`trailing-long`；`mid-section` 与 `random-contiguous` 作为抗过拟合压力测试。
+
+visible test 的 3 口井与 train ID 重合，不能作为独立验证集，也不能根据它们手调 offset 或 blend 权重。
+
 mask 类型：
 
 | Mask | 目的 |
@@ -233,7 +237,7 @@ mask 类型：
 - mask 长度；
 - GR 缺失率；
 - TVT slope/curvature；
-- typewell Geology 覆盖；
+- optional typewell Geology 覆盖；
 - baseline RMSE；
 - model RMSE。
 
@@ -462,7 +466,9 @@ GR 缺失多，不能让模型过度依赖 GR。
 
 ### 8.1 目标
 
-用 typewell 的垂直 GR 和 Geology 信息，帮助判断水平井 hidden interval 的真实 TVT 是否偏离 baseline。
+用 horizontal GR、typewell 垂直 GR，以及可选 Geology 信息，帮助判断水平井 hidden interval 的真实 TVT 是否偏离 baseline。
+
+PPTX 明确提示 horizontal well 的 GR 可能比 typewell 更有分辨率，因此 Part 3/4 必须把“PS 前 horizontal GR 模板匹配 PS 后 horizontal GR”作为和 typewell 对齐并行的主线，而不是只做 typewell。
 
 ### 8.2 简单对齐版本
 
@@ -470,7 +476,7 @@ GR 缺失多，不能让模型过度依赖 GR。
 
 1. 用 baseline TVT 找到 typewell 附近窗口；
 2. 提取 typewell GR 局部统计；
-3. 提取 typewell Geology label；
+3. 如果 test typewell 提供 `Geology`，再提取 Geology label；否则 Geology 特征置空并 fallback；
 4. 比较 horizontal GR 与 typewell GR 的局部形态；
 5. 生成 similarity features。
 
@@ -478,8 +484,8 @@ GR 缺失多，不能让模型过度依赖 GR。
 
 - typewell GR at baseline TVT；
 - typewell GR rolling mean/std；
-- nearby Geology label；
-- label change distance；
+- optional nearby Geology label；
+- optional label change distance；
 - horizontal-typewell GR difference；
 - local correlation；
 - candidate TVT offset with best GR match。
@@ -517,6 +523,8 @@ offset in [-window, +window]
 - 预测段是否跨 formation boundary；
 - 距离上/下 boundary 的距离；
 - 是否进入风险地层。
+
+注意：Geology 是 optional 模块。visible test typewell 没有 `Geology`，因此 final submission 不能要求该列存在。
 
 ### 8.6 验收标准
 
@@ -792,7 +800,7 @@ pred = w0 * baseline + w1 * geometry + w2 * gr + w3 * typewell
 目标：
 
 - typewell GR 简单滑窗对齐；
-- Geology label 特征；
+- optional Geology label 特征；
 - typewell residual model。
 
 完成标准：
