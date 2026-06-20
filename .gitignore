@@ -3,6 +3,10 @@
 .codex/
 __pycache__/
 .DS_Store
-data/
-outputs/
+data/*
+!data/.gitkeep
+!data/README.md
+outputs/*
+!outputs/.gitkeep
+!outputs/README.md
 *.zip
