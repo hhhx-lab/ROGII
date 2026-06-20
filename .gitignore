@@ -1,6 +1,7 @@
 .venv/
 .playwright-mcp/
 __pycache__/
+.DS_Store
 data/
 outputs/
 features/

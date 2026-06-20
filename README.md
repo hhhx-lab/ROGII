@@ -78,6 +78,7 @@ Build features, validate RMSE, submit notebooks
 - Runtime limits: CPU <= 9 hours, GPU <= 9 hours.
 - Internet access: disabled in submissions.
 - External data: freely and publicly available data is allowed.
+- Project rule checklist: [`docs/kaggle_rules_checklist.md`](docs/kaggle_rules_checklist.md).
 
 ## Data Layout
 
@@ -112,7 +113,10 @@ python scripts/download_data.py
 
 This repo keeps the competition data local. The raw bundle is too large for git, so the repository only tracks the downloader and the working notes. Kaggle access still depends on an authenticated account that has accepted the competition rules.
 
+Competition data is also rule-restricted: it is for competition use only and should not be published, redistributed, or pushed to this GitHub repository.
+
 ## Source
 
 - [Kaggle competition page](https://www.kaggle.com/competitions/rogii-wellbore-geology-prediction)
 - [Kaggle data page](https://www.kaggle.com/competitions/rogii-wellbore-geology-prediction/data)
+- [Kaggle rules checklist](docs/kaggle_rules_checklist.md)
