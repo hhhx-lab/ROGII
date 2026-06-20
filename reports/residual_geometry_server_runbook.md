@@ -2,6 +2,12 @@
 
 The local Part 2 run is intentionally reproducible and can be scaled on a larger machine without changing code.
 
+For a beginner-friendly end-to-end guide covering server setup, data transfer, full run, packaging, and local result inspection, see:
+
+```text
+docs/operations/part2_server_full_run_guide.md
+```
+
 ## Full-Row Training
 
 ```bash

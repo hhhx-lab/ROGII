@@ -12,4 +12,14 @@ outputs/*
 features/*
 !features/.gitkeep
 !features/README.md
+packages/*
+!packages/.gitkeep
+!packages/README.md
+server_results/*
+!server_results/.gitkeep
+!server_results/README.md
+reports/server_part2_preflight_report.md
+reports/server_part2_full_run_summary.md
+reports/server_part2_full_run_summary.json
+reports/server_part2_full_run_logs/
 *.zip
