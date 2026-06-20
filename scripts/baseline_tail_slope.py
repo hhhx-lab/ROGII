@@ -7,6 +7,8 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_squared_error
 
+from rogii_utils import assert_data_contract_ready, data_hash_short
+
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data" / "raw"
@@ -57,6 +59,8 @@ def tail_slope_prediction(df: pd.DataFrame, rows: np.ndarray, tail_window: int) 
 def main() -> int:
     SUBMISSION_DIR.mkdir(exist_ok=True)
     REPORT_DIR.mkdir(exist_ok=True)
+    data_version = assert_data_contract_ready()
+    data_hash = data_hash_short(data_version)
 
     sample = pd.read_csv(DATA_DIR / "sample_submission.csv")
     parsed = parse_submission_ids(sample)
@@ -99,6 +103,8 @@ def main() -> int:
         "## Method",
         "",
         "This baseline fills the missing evaluation interval per well by extrapolating `TVT_input` from the latest observed segment. It uses the median `dTVT/dMD` slope over the last 200 observed points, then writes predictions in Kaggle submission format.",
+        "",
+        f"- Data hash: `{data_hash}`",
         "",
         "## Output",
         "",

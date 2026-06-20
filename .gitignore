@@ -1,9 +1,8 @@
 .venv/
 .playwright-mcp/
+.codex/
 __pycache__/
 .DS_Store
 data/
 outputs/
-features/
-models/
 *.zip
