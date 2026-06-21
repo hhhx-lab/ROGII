@@ -2,11 +2,11 @@
 
 ## Data Version
 
-- Zip path: `data/rogii-wellbore-geology-prediction.zip`
-- Zip size bytes: 817194388
-- Zip SHA256: `46fd84d5e7e16bc8d16bbfb38e95f06ac7fc154437d1c07203f80a8c6dd852fd`
+- Zip path: `None`
+- Zip size bytes: None
+- Zip SHA256: `None`
 - Raw file count: 2327
-- Created at UTC: 2026-06-20T05:37:29.237715+00:00
+- Created at UTC: 2026-06-21T10:18:44.862212+00:00
 
 ## File Inventory
 
@@ -41,8 +41,8 @@
 
 - Critical errors: 0
 - Warnings: 11
-- Summary CSV: `outputs/data_contract_summary.csv`
-- Data version JSON: `outputs/data_version.json`
+- Summary CSV: `outputs\data_contract_summary.csv`
+- Data version JSON: `outputs\data_version.json`
 
 ## Critical Errors
 
@@ -53,14 +53,14 @@
 - test well 000d7d20 typewell has no Geology column; TVT/GR are available and Geology is optional in visible test
 - test well 00bbac68 typewell has no Geology column; TVT/GR are available and Geology is optional in visible test
 - test well 00e12e8b typewell has no Geology column; TVT/GR are available and Geology is optional in visible test
-- data/raw/train/03a935ae__horizontal_well.csv warnings: all_empty=ANCC, dtype=-, md_monotonic=True
-- data/raw/train/1b1eba53__horizontal_well.csv warnings: all_empty=ANCC, dtype=-, md_monotonic=True
-- data/raw/train/4c2208f5__horizontal_well.csv warnings: all_empty=ANCC, dtype=-, md_monotonic=True
-- data/raw/train/727a3a10__horizontal_well.csv warnings: all_empty=ANCC, dtype=-, md_monotonic=True
-- data/raw/train/81bf5923__horizontal_well.csv warnings: all_empty=ANCC, dtype=-, md_monotonic=True
-- data/raw/train/9dfff011__horizontal_well.csv warnings: all_empty=EGFDL, dtype=-, md_monotonic=True
-- data/raw/train/a8ed028a__horizontal_well.csv warnings: all_empty=ANCC, dtype=-, md_monotonic=True
-- data/raw/train/d7eb0be8__horizontal_well.csv warnings: all_empty=ANCC, dtype=-, md_monotonic=True
+- data\raw\train\03a935ae__horizontal_well.csv warnings: all_empty=ANCC, dtype=-, md_monotonic=True
+- data\raw\train\1b1eba53__horizontal_well.csv warnings: all_empty=ANCC, dtype=-, md_monotonic=True
+- data\raw\train\4c2208f5__horizontal_well.csv warnings: all_empty=ANCC, dtype=-, md_monotonic=True
+- data\raw\train\727a3a10__horizontal_well.csv warnings: all_empty=ANCC, dtype=-, md_monotonic=True
+- data\raw\train\81bf5923__horizontal_well.csv warnings: all_empty=ANCC, dtype=-, md_monotonic=True
+- data\raw\train\9dfff011__horizontal_well.csv warnings: all_empty=EGFDL, dtype=-, md_monotonic=True
+- data\raw\train\a8ed028a__horizontal_well.csv warnings: all_empty=ANCC, dtype=-, md_monotonic=True
+- data\raw\train\d7eb0be8__horizontal_well.csv warnings: all_empty=ANCC, dtype=-, md_monotonic=True
 
 ## Downstream Rule
 

@@ -9,6 +9,13 @@ data/*
 outputs/*
 !outputs/.gitkeep
 !outputs/README.md
+!outputs/baseline_cv_by_well.csv
+!outputs/data_contract_summary.csv
+!outputs/data_version.json
+!outputs/part3_diagnostics.csv
+!outputs/postprocess_diagnostics.csv
+!outputs/residual_geometry_cv_by_well.csv
+!outputs/submission_manifest.json
 features/*
 !features/.gitkeep
 !features/README.md
@@ -22,6 +29,7 @@ reports/server_part2_preflight_report.md
 reports/server_part2_full_run_summary.md
 reports/server_part2_full_run_summary.json
 reports/server_part2_full_run_logs/
+reports/full_inference_logs/
 *.zip
 .DS_Store
 AI_wellbore_geology_prediction_task_en.pptx
@@ -29,3 +37,9 @@ train-20260620T080024Z-3-001.zip
 test-20260620T080007Z-3-001.zip
 submission.csv
 submissions/*.csv
+!submission.csv
+!submissions/aggressive_submission.csv
+!submissions/balanced_postprocessed_submission.csv
+!submissions/balanced_submission.csv
+!submissions/conservative_submission.csv
+!submissions/geometry_residual_submission.csv

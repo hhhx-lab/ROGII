@@ -25,4 +25,4 @@ This report turns the Part 3 ideas into a routing table: estimate GR quality, es
 - `geometry_residual`: GR is weak, so geometry should dominate.
 - `baseline_fallback`: the signal quality is too low for aggressive correction.
 
-Diagnostics written to `outputs/part3_diagnostics.csv`.
+Diagnostics written to `outputs\part3_diagnostics.csv`.

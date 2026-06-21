@@ -107,4 +107,4 @@
 - A per-well extrapolation baseline is a strong first sanity check because visible targets continue from the known `TVT_input` segment.
 - Stronger models should use cross-well validation rather than trusting the three visible test wells.
 
-Data root resolved as: `data`
+Data root resolved as: `data\raw`

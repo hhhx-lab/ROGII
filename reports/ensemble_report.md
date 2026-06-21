@@ -2,13 +2,13 @@
 
 ## CV Summary
 
-| variant      |    rmse |
-|:-------------|--------:|
-| baseline     | 29.8117 |
-| geometry     | 58.2439 |
-| balanced     | 48.71   |
-| conservative | 29.8117 |
-| aggressive   | 43.8092 |
+| variant      |     rmse |
+|:-------------|---------:|
+| baseline     | 119.733  |
+| geometry     |  16.0862 |
+| balanced     |  41.6539 |
+| conservative | 109.416  |
+| aggressive   |  59.3856 |
 
 ## Test Routing
 

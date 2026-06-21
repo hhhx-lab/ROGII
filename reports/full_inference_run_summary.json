@@ -1,0 +1,180 @@
+﻿{
+    "started_at":  "2026-06-21 18:18:28 +08:00",
+    "finished_at":  "2026-06-21 18:37:45 +08:00",
+    "status":  "PASS",
+    "failed_step":  "",
+    "variant":  "balanced",
+    "dry_run":  false,
+    "results":  [
+                    {
+                        "step":  "install_dependencies",
+                        "command":  [
+                                        "C:\\Users\\31745\\Desktop\\训练\\ROGII\\.venv\\Scripts\\python.exe",
+                                        "-m",
+                                        "pip",
+                                        "install",
+                                        "-r",
+                                        "requirements.txt"
+                                    ],
+                        "started_at":  "2026-06-21 18:18:28 +08:00",
+                        "finished_at":  "2026-06-21 18:18:30 +08:00",
+                        "seconds":  2.171,
+                        "exit_code":  0,
+                        "log":  "reports\\full_inference_logs\\20260621_181828_01_install_dependencies.log"
+                    },
+                    {
+                        "step":  "eda",
+                        "command":  [
+                                        "C:\\Users\\31745\\Desktop\\训练\\ROGII\\.venv\\Scripts\\python.exe",
+                                        "scripts/run_eda.py"
+                                    ],
+                        "started_at":  "2026-06-21 18:18:30 +08:00",
+                        "finished_at":  "2026-06-21 18:18:37 +08:00",
+                        "seconds":  7.031,
+                        "exit_code":  0,
+                        "log":  "reports\\full_inference_logs\\20260621_181828_02_eda.log"
+                    },
+                    {
+                        "step":  "data_contract",
+                        "command":  [
+                                        "C:\\Users\\31745\\Desktop\\训练\\ROGII\\.venv\\Scripts\\python.exe",
+                                        "scripts/check_data_contract.py"
+                                    ],
+                        "started_at":  "2026-06-21 18:18:37 +08:00",
+                        "finished_at":  "2026-06-21 18:18:44 +08:00",
+                        "seconds":  7.455,
+                        "exit_code":  0,
+                        "log":  "reports\\full_inference_logs\\20260621_181828_03_data_contract.log"
+                    },
+                    {
+                        "step":  "baseline_cv",
+                        "command":  [
+                                        "C:\\Users\\31745\\Desktop\\训练\\ROGII\\.venv\\Scripts\\python.exe",
+                                        "scripts/evaluate_baseline_cv.py"
+                                    ],
+                        "started_at":  "2026-06-21 18:18:44 +08:00",
+                        "finished_at":  "2026-06-21 18:18:53 +08:00",
+                        "seconds":  8.171,
+                        "exit_code":  0,
+                        "log":  "reports\\full_inference_logs\\20260621_181828_04_baseline_cv.log"
+                    },
+                    {
+                        "step":  "baseline_features",
+                        "command":  [
+                                        "C:\\Users\\31745\\Desktop\\训练\\ROGII\\.venv\\Scripts\\python.exe",
+                                        "scripts/build_baseline_features.py"
+                                    ],
+                        "started_at":  "2026-06-21 18:18:53 +08:00",
+                        "finished_at":  "2026-06-21 18:19:53 +08:00",
+                        "seconds":  60.693,
+                        "exit_code":  0,
+                        "log":  "reports\\full_inference_logs\\20260621_181828_05_baseline_features.log"
+                    },
+                    {
+                        "step":  "geometry_features",
+                        "command":  [
+                                        "C:\\Users\\31745\\Desktop\\训练\\ROGII\\.venv\\Scripts\\python.exe",
+                                        "scripts/build_geometry_features.py"
+                                    ],
+                        "started_at":  "2026-06-21 18:19:53 +08:00",
+                        "finished_at":  "2026-06-21 18:26:40 +08:00",
+                        "seconds":  406.629,
+                        "exit_code":  0,
+                        "log":  "reports\\full_inference_logs\\20260621_181828_06_geometry_features.log"
+                    },
+                    {
+                        "step":  "train_geometry_residual",
+                        "command":  [
+                                        "C:\\Users\\31745\\Desktop\\训练\\ROGII\\.venv\\Scripts\\python.exe",
+                                        "scripts/train_residual_model.py",
+                                        "--spec",
+                                        "geometry"
+                                    ],
+                        "started_at":  "2026-06-21 18:26:40 +08:00",
+                        "finished_at":  "2026-06-21 18:28:24 +08:00",
+                        "seconds":  103.935,
+                        "exit_code":  0,
+                        "log":  "reports\\full_inference_logs\\20260621_181828_07_train_geometry_residual.log"
+                    },
+                    {
+                        "step":  "part3_diagnostics",
+                        "command":  [
+                                        "C:\\Users\\31745\\Desktop\\训练\\ROGII\\.venv\\Scripts\\python.exe",
+                                        "scripts/build_part3_diagnostics.py"
+                                    ],
+                        "started_at":  "2026-06-21 18:28:24 +08:00",
+                        "finished_at":  "2026-06-21 18:28:31 +08:00",
+                        "seconds":  7.482,
+                        "exit_code":  0,
+                        "log":  "reports\\full_inference_logs\\20260621_181828_08_part3_diagnostics.log"
+                    },
+                    {
+                        "step":  "part3_features",
+                        "command":  [
+                                        "C:\\Users\\31745\\Desktop\\训练\\ROGII\\.venv\\Scripts\\python.exe",
+                                        "scripts/build_part3_features.py"
+                                    ],
+                        "started_at":  "2026-06-21 18:28:31 +08:00",
+                        "finished_at":  "2026-06-21 18:35:40 +08:00",
+                        "seconds":  428.2,
+                        "exit_code":  0,
+                        "log":  "reports\\full_inference_logs\\20260621_181828_09_part3_features.log"
+                    },
+                    {
+                        "step":  "blend_predictions",
+                        "command":  [
+                                        "C:\\Users\\31745\\Desktop\\训练\\ROGII\\.venv\\Scripts\\python.exe",
+                                        "scripts/blend_predictions.py"
+                                    ],
+                        "started_at":  "2026-06-21 18:35:40 +08:00",
+                        "finished_at":  "2026-06-21 18:37:02 +08:00",
+                        "seconds":  82.144,
+                        "exit_code":  0,
+                        "log":  "reports\\full_inference_logs\\20260621_181828_10_blend_predictions.log"
+                    },
+                    {
+                        "step":  "postprocess_balanced",
+                        "command":  [
+                                        "C:\\Users\\31745\\Desktop\\训练\\ROGII\\.venv\\Scripts\\python.exe",
+                                        "scripts/postprocess_predictions.py",
+                                        "--variant",
+                                        "balanced"
+                                    ],
+                        "started_at":  "2026-06-21 18:37:02 +08:00",
+                        "finished_at":  "2026-06-21 18:37:43 +08:00",
+                        "seconds":  41.209,
+                        "exit_code":  0,
+                        "log":  "reports\\full_inference_logs\\20260621_181828_11_postprocess_balanced.log"
+                    },
+                    {
+                        "step":  "make_submission_balanced",
+                        "command":  [
+                                        "C:\\Users\\31745\\Desktop\\训练\\ROGII\\.venv\\Scripts\\python.exe",
+                                        "scripts/make_submission.py",
+                                        "--variant",
+                                        "balanced",
+                                        "--output",
+                                        "submission.csv"
+                                    ],
+                        "started_at":  "2026-06-21 18:37:43 +08:00",
+                        "finished_at":  "2026-06-21 18:37:45 +08:00",
+                        "seconds":  1.732,
+                        "exit_code":  0,
+                        "log":  "reports\\full_inference_logs\\20260621_181828_12_make_submission_balanced.log"
+                    },
+                    {
+                        "step":  "validate_submission",
+                        "command":  [
+                                        "C:\\Users\\31745\\Desktop\\训练\\ROGII\\.venv\\Scripts\\python.exe",
+                                        "scripts/validate_submission.py",
+                                        "--submission",
+                                        "submission.csv"
+                                    ],
+                        "started_at":  "2026-06-21 18:37:45 +08:00",
+                        "finished_at":  "2026-06-21 18:37:45 +08:00",
+                        "seconds":  0.661,
+                        "exit_code":  0,
+                        "log":  "reports\\full_inference_logs\\20260621_181828_13_validate_submission.log"
+                    }
+                ]
+}
