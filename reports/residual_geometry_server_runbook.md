@@ -35,6 +35,14 @@ For a smaller smoke run:
 - Do not mix in system Python, Homebrew Python, Conda, or `sudo pip`
 - Keep raw Kaggle data under `data/raw/`
 
+## Full-Row Training
+
+Use the explicit full-row training setting for final server-grade Part 2 runs:
+
+```bash
+ROGII_PART2_TRAIN_ROWS_PER_WELL=0 .venv/bin/python scripts/run_part2_full_server.py
+```
+
 ## Output Contract
 
 Expected final artifacts:

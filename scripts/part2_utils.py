@@ -31,7 +31,7 @@ def read_json(path: Path) -> dict[str, object]:
 
 def data_hash_short() -> str:
     version = read_json(DATA_VERSION_PATH)
-    value = str(version.get("zip_sha256", "unknown"))
+    value = str(version.get("zip_sha256") or "unknown")
     return value[:12] if value != "unknown" else value
 
 

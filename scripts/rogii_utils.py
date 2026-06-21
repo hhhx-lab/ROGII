@@ -102,7 +102,7 @@ def assert_data_contract_ready() -> dict[str, object]:
 
 def data_hash_short(data_version: dict[str, object] | None = None) -> str:
     version = data_version if data_version is not None else load_data_version()
-    value = str(version.get("zip_sha256", "unknown"))
+    value = str(version.get("zip_sha256") or "unknown")
     return value[:12] if value != "unknown" else value
 
 

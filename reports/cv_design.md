@@ -1,6 +1,6 @@
 # CV Design
 
-- Data hash: `46fd84d5e7e1`
+- Data hash: `unknown`
 - Mask seed: `20260620`
 - Train wells: 773
 - Total splits: 5411
@@ -39,4 +39,4 @@
 - Mask types generated: 7
 - Minimum wells per mask type: 773
 - Coverage failures: 0
-- Split CSV: `outputs/cv_splits.csv`
+- Split CSV: `outputs\cv_splits.csv`

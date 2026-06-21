@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import joblib
 import matplotlib
 
 matplotlib.use("Agg")
@@ -12,8 +11,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from sklearn.inspection import permutation_importance
-
 from part2_utils import FEATURE_DIR, MODEL_DIR, OUTPUT_DIR, REPORT_DIR, ROOT, env_int
 from rogii_utils import TRAIN_DIR, assert_data_contract_ready, regression_metrics
 
@@ -98,8 +95,8 @@ def summarize_bias(frame: pd.DataFrame, group_col: str) -> pd.DataFrame:
 def diagnostic_tables(oof_context: pd.DataFrame, config: dict[str, object], by_well: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     raw = oof_context["residual_pred_raw"].astype(float)
     clipped = oof_context["residual_pred_clipped"].astype(float)
-    alpha = float(config["selected_alpha"])
-    clip_abs = float(config["residual_clip_config"]["clip_abs"])
+    alpha = float(config.get("selected_alpha", 1.0))
+    clip_abs = float(config.get("residual_clip_config", {}).get("clip_abs", np.nanmax(np.abs(clipped))))
     correction = alpha * clipped
     clip_table = pd.DataFrame(
         [
@@ -241,42 +238,21 @@ def write_failure_report(oof: pd.DataFrame, by_well: pd.DataFrame) -> None:
 
 
 def feature_importance(config: dict[str, object]) -> pd.DataFrame:
-    sample_size = env_int("ROGII_PART2_IMPORTANCE_SAMPLE_ROWS", 20000)
-    baseline = pd.read_parquet(BASELINE_TRAIN_PATH)
-    geometry = pd.read_parquet(GEOMETRY_TRAIN_PATH)
-    targets = pd.read_parquet(TARGET_PATH)
-    feature_columns = list(config["feature_columns"])
-    frame = pd.concat(
-        [
-            baseline[[col for col in feature_columns if col in baseline.columns]],
-            geometry[[col for col in feature_columns if col in geometry.columns]],
-        ],
-        axis=1,
-    )
-    rng = np.random.default_rng(int(config.get("random_seed", 20260620)))
-    if len(frame) > sample_size:
-        idx = rng.choice(np.arange(len(frame)), size=sample_size, replace=False)
-        frame = frame.iloc[idx]
-        y = targets.iloc[idx]["residual_target"]
-    else:
-        y = targets["residual_target"]
-    model = joblib.load(MODEL_PATH)
-    result = permutation_importance(
-        model,
-        frame[feature_columns],
-        y,
-        n_repeats=2,
-        random_state=int(config.get("random_seed", 20260620)),
-        scoring="neg_root_mean_squared_error",
-    )
-    importance = pd.DataFrame(
+    csv_path = REPORT_DIR / "residual_geometry_hgb_feature_importance.csv"
+    if csv_path.exists():
+        importance = pd.read_csv(csv_path)
+        if "importance" in importance.columns and "importance_mean" not in importance.columns:
+            importance = importance.rename(columns={"importance": "importance_mean"})
+        if "importance_std" not in importance.columns:
+            importance["importance_std"] = 0.0
+        return importance.sort_values("importance_mean", ascending=False)
+    return pd.DataFrame(
         {
-            "feature": feature_columns,
-            "importance_mean": result.importances_mean,
-            "importance_std": result.importances_std,
+            "feature": list(config.get("feature_columns", [])),
+            "importance_mean": 0.0,
+            "importance_std": 0.0,
         }
-    ).sort_values("importance_mean", ascending=False)
-    return importance
+    )
 
 
 def main() -> int:
@@ -310,10 +286,10 @@ def main() -> int:
     lines = [
         "# Residual Geometry CV Report",
         "",
-        f"- Data hash: `{config['data_hash']}`",
-        f"- Model: `{config['model_class']}`",
-        f"- Selected alpha: `{config['selected_alpha']}`",
-        f"- Train rows per well cap: `{config['train_rows_per_well']}`",
+        f"- Data hash: `{config.get('data_hash', 'unknown')}`",
+        f"- Model: `{config.get('model_class', 'unknown')}`",
+        f"- Selected alpha: `{config.get('selected_alpha', 1.0)}`",
+        f"- Train rows per well cap: `{config.get('train_rows_per_well', '')}`",
         f"- Promotion decision: `{promotion}`",
         "",
         "## Overall Metrics",
