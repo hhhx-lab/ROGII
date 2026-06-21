@@ -6,6 +6,8 @@
 
 严格执行 `docs/plans/02_residual_modeling.md`，完成 baseline + geometry residual 主干。优先完成本机可运行版本；如果本机算力不足，则保留同一套脚本、配置和 server runbook，使服务器上可以直接放大全量训练。
 
+注意：当前仓库里虽然已经有 Part 2 的审计通过记录，但这次已经把旧结果清理掉了，因此 `reports/part2_completion_audit.md`、`models/residual_geometry*`、`outputs/residual_geometry*`、`submissions/geometry_residual*` 和 `features/*.parquet` 的旧产物不再保留。后续最终冻结结果应以服务器 full-row 复跑后的新产物为准，而不是把上一轮 CV 报告当成最终版。
+
 ## 进度总览
 
 | 模块 | 状态 | 当前证据 |

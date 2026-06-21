@@ -19,14 +19,13 @@ This repository is the working base for the Kaggle competition **ROGII - Wellbor
 
 The competition is a notebook-only code contest with RMSE scoring. Kaggle exposes the public description, the data bundle, and the submission format through the competition page. This repo treats that setup as an engineering problem: define the data contracts, build a validation loop that mimics hidden wells, keep a simple baseline as a control, and only promote models that improve in a measurable and explainable way.
 
-The current workspace already contains a full local submission loop:
+The current workspace already contains the local pieces needed to build a submission loop:
 
 - tail-slope baseline;
 - geometry residual model;
 - route-aware Part 3 correction diagnostics;
 - blend / postprocess / final submission scripts;
-- a Kaggle notebook skeleton;
-- a generated `submission.csv`.
+- a Kaggle notebook scaffold.
 
 ## Competition Brief
 
@@ -108,6 +107,8 @@ python -m venv .venv
 kaggle auth login
 python scripts/download_data.py
 ```
+
+For a local rerun, use `.venv/bin/python` against the scripts in `scripts/`.
 
 ## Repository Layout
 

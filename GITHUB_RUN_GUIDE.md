@@ -9,6 +9,13 @@
 - 测试数据放在 `data/test/`
 - `data/sample_submission.csv` 可用
 
+推荐先建一个本地虚拟环境：
+
+```bash
+python -m venv .venv
+.venv/bin/pip install -r requirements.txt
+```
+
 ## 2. 最小跑通目标
 
 只验证一条链路：
@@ -32,16 +39,16 @@
 
 ## 4. 运行命令
 
-推荐用 conda 环境 `py3.9`：
+推荐用仓库内的 `.venv`：
 
 ```bash
-conda run -n py3.9 python scripts/make_submission.py --variant balanced --output submission.csv
+.venv/bin/python scripts/make_submission.py --variant balanced --output submission.csv
 ```
 
 如果你想先做一个临时验证，可以把输出放到别的路径：
 
 ```bash
-conda run -n py3.9 python scripts/make_submission.py --variant balanced --output /tmp/rogii_submission.csv
+.venv/bin/python scripts/make_submission.py --variant balanced --output /tmp/rogii_submission.csv
 ```
 
 ## 5. 成功标志
@@ -88,4 +95,3 @@ EDA
   -> postprocess
   -> final submission
 ```
-

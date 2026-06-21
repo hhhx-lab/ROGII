@@ -28,7 +28,9 @@ data/
 推荐用这个环境跑：
 
 ```bash
-conda run -n py3.9 python ...
+python -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python ...
 ```
 
 这个环境里需要：
@@ -44,7 +46,7 @@ conda run -n py3.9 python ...
 ### 4.1 先做数据检查和 EDA
 
 ```bash
-conda run -n py3.9 python scripts/run_eda.py
+.venv/bin/python scripts/run_eda.py
 ```
 
 这会生成：
@@ -54,7 +56,7 @@ conda run -n py3.9 python scripts/run_eda.py
 ### 4.2 跑 baseline
 
 ```bash
-conda run -n py3.9 python scripts/baseline_tail_slope.py
+.venv/bin/python scripts/baseline_tail_slope.py
 ```
 
 这会生成：
@@ -65,7 +67,7 @@ conda run -n py3.9 python scripts/baseline_tail_slope.py
 然后做 baseline 的 CV：
 
 ```bash
-conda run -n py3.9 python scripts/evaluate_baseline_cv.py
+.venv/bin/python scripts/evaluate_baseline_cv.py
 ```
 
 这会生成：
@@ -78,10 +80,10 @@ conda run -n py3.9 python scripts/evaluate_baseline_cv.py
 如果你要重跑全量特征，顺序一般是：
 
 ```bash
-conda run -n py3.9 python scripts/build_baseline_features.py
-conda run -n py3.9 python scripts/build_geometry_features.py
-conda run -n py3.9 python scripts/build_part3_features.py
-conda run -n py3.9 python scripts/build_part3_diagnostics.py
+.venv/bin/python scripts/build_baseline_features.py
+.venv/bin/python scripts/build_geometry_features.py
+.venv/bin/python scripts/build_part3_features.py
+.venv/bin/python scripts/build_part3_diagnostics.py
 ```
 
 这些脚本会更新：
@@ -92,7 +94,7 @@ conda run -n py3.9 python scripts/build_part3_diagnostics.py
 ### 4.4 训练 residual 模型
 
 ```bash
-conda run -n py3.9 python scripts/train_residual_model.py --spec all
+.venv/bin/python scripts/train_residual_model.py --spec all
 ```
 
 这会生成：
@@ -111,7 +113,7 @@ conda run -n py3.9 python scripts/train_residual_model.py --spec all
 先做 blend：
 
 ```bash
-conda run -n py3.9 python scripts/blend_predictions.py
+.venv/bin/python scripts/blend_predictions.py
 ```
 
 这会生成：
@@ -125,13 +127,13 @@ conda run -n py3.9 python scripts/blend_predictions.py
 再做后处理：
 
 ```bash
-conda run -n py3.9 python scripts/postprocess_predictions.py --variant balanced
+.venv/bin/python scripts/postprocess_predictions.py --variant balanced
 ```
 
 最后生成提交文件：
 
 ```bash
-conda run -n py3.9 python scripts/make_submission.py --variant balanced --output submission.csv
+.venv/bin/python scripts/make_submission.py --variant balanced --output submission.csv
 ```
 
 ## 5. 最终成功标志
@@ -194,6 +196,5 @@ conda run -n py3.9 python scripts/make_submission.py --variant balanced --output
 所以如果你只是想先验证提交链路，直接跑：
 
 ```bash
-conda run -n py3.9 python scripts/make_submission.py --variant balanced --output submission.csv
+.venv/bin/python scripts/make_submission.py --variant balanced --output submission.csv
 ```
-

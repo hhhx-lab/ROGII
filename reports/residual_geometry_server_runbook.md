@@ -1,33 +1,61 @@
 # Residual Geometry Server Runbook
 
-The local Part 2 run is intentionally reproducible and can be scaled on a larger machine without changing code.
+This is the compact technical companion to `docs/operations/part2_server_full_run_guide.md`.
 
-For a beginner-friendly end-to-end guide covering server setup, data transfer, full run, packaging, and local result inspection, see:
+## Purpose
 
-```text
-docs/operations/part2_server_full_run_guide.md
-```
+- Re-run Part 2 on a server from a clean workspace
+- Keep the full-row training path reproducible
+- Capture the final outputs that will be packaged and brought back locally
 
-## Full-Row Training
+## Canonical Commands
 
 ```bash
-.venv/bin/python scripts/build_baseline_features.py
-.venv/bin/python scripts/build_geometry_features.py
-ROGII_PART2_TRAIN_ROWS_PER_WELL=0 \
-ROGII_PART2_MAX_ITER=500 \
-.venv/bin/python scripts/train_residual_model.py
-.venv/bin/python scripts/evaluate_model_cv.py
-ROGII_PART2_MULTIMASK_TRAIN_ROWS_PER_WELL=0 \
-ROGII_PART2_MULTIMASK_MAX_ITER=500 \
-.venv/bin/python scripts/evaluate_residual_multimask.py
+.venv/bin/python scripts/server_part2_preflight.py
+.venv/bin/python scripts/run_part2_full_server.py --dry-run
+.venv/bin/python scripts/run_part2_full_server.py
 .venv/bin/python scripts/validate_part2_outputs.py
+.venv/bin/python scripts/package_part2_server_outputs.py
+.venv/bin/python scripts/inspect_part2_server_package.py packages/part2_server_outputs_YYYYMMDD_HHMMSS.tar.gz
 ```
 
-## Local Default
+For a smaller smoke run:
 
-- `ROGII_PART2_TRAIN_ROWS_PER_WELL=600`
-- selected alpha: `0.75`
-- residual clip abs: `66.5900`
-- local multi-mask validation defaults are lighter than full-row server training and are controlled by `ROGII_PART2_MULTIMASK_*` environment variables.
+```bash
+.venv/bin/python scripts/run_part2_full_server.py \
+  --train-rows-per-well 1200 \
+  --max-iter 300 \
+  --multimask-train-rows-per-well 1200 \
+  --multimask-max-iter 300
+```
 
-All generated `features/` and `outputs/` artifacts are reproducible from scripts and should be regenerated on the server after syncing `data/raw/`.
+## Environment
+
+- Use a project-local `.venv`
+- Do not mix in system Python, Homebrew Python, Conda, or `sudo pip`
+- Keep raw Kaggle data under `data/raw/`
+
+## Output Contract
+
+Expected final artifacts:
+
+- `models/residual_geometry*`
+- `outputs/residual_geometry*`
+- `reports/residual_geometry*`
+- `reports/part2_completion_audit.md`
+- `submissions/geometry_residual_submission.csv`
+- `packages/part2_server_outputs_*.tar.gz`
+- `packages/part2_server_outputs_*.tar.gz.sha256`
+
+## Readiness Checks
+
+- `checks=34 failures=0` from `scripts/validate_part2_outputs.py`
+- server summary markdown/json created
+- package inspection passes
+- old Part 2 artifacts are not being reused by accident
+
+## Notes
+
+- Part 1 does not need a rerun.
+- If Part 2 reports conflict with each other, trust the server rerun that was produced from the clean workspace.
+- If the server is memory constrained, lower `--train-rows-per-well` and `--multimask-train-rows-per-well` for a smoke run first, then return to full-row.

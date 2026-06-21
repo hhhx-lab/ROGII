@@ -37,10 +37,10 @@
 
 | 阶段 | 子计划 | 目标 |
 |---|---|---|
-| Part 1 | [`plans/01_validation_baseline.md`](plans/01_validation_baseline.md) | 建立数据契约、CV 框架和可信 baseline |
-| Part 2 | [`plans/02_residual_modeling.md`](plans/02_residual_modeling.md) | 建立 baseline + residual 主干模型 |
-| Part 3 | [`plans/03_gr_typewell_alignment.md`](plans/03_gr_typewell_alignment.md) | 加入 GR 和 typewell 对齐地质信号 |
-| Part 4 | [`plans/04_ensemble_submission_ops.md`](plans/04_ensemble_submission_ops.md) | 集成、后处理、Notebook 工程化和冲榜运营 |
+| Part 1 | [`docs/plans/01_validation_baseline.md`](docs/plans/01_validation_baseline.md) | 建立数据契约、CV 框架和可信 baseline |
+| Part 2 | [`docs/plans/02_residual_modeling.md`](docs/plans/02_residual_modeling.md) | 建立 baseline + residual 主干模型 |
+| Part 3 | [`docs/plans/03_gr_typewell_alignment.md`](docs/plans/03_gr_typewell_alignment.md) | 加入 GR 和 typewell 对齐地质信号 |
+| Part 4 | [`docs/plans/04_ensemble_submission_ops.md`](docs/plans/04_ensemble_submission_ops.md) | 集成、后处理、Notebook 工程化和冲榜运营 |
 
 ## 1. 方法总判断
 
