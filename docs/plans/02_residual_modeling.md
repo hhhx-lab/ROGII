@@ -17,7 +17,7 @@ prediction = continuity_baseline + residual_model(features)
 ### 2.1 输入
 
 ```text
-data/
+data/raw/
 outputs/baseline_predictions_train_hidden.csv
 outputs/baseline_cv_by_well.csv
 outputs/cv_splits.csv
@@ -49,6 +49,8 @@ reports/
 submissions/
 `-- geometry_residual_submission.csv
 ```
+
+注意：本阶段的旧结果已经被清理掉，当前文档描述的是应当重新生成的产物，而不是仓库里已经保留的冻结文件。
 
 ## 3. 残差目标定义
 

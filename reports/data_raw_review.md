@@ -178,7 +178,7 @@ TVT, GR
 
 已确认需要同步修改：
 
-- `plan.md`
+- `docs/plans/00_overview.md`
 - `docs/plans/01_validation_baseline.md`
 - `docs/plans/03_gr_typewell_alignment.md`
 

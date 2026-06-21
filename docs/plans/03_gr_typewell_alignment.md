@@ -1,4 +1,4 @@
-# Part 3: GR 信号与 Typewell 对齐地质增强
+# Part 3: GR 信号、水平井自对齐与 Typewell 对齐增强
 
 ## 1. 阶段目标
 
@@ -20,19 +20,20 @@ final = baseline + gated_correction
 本阶段要解决：
 
 1. 水平井 GR 能否提示 hidden interval 的地层变化；
-2. typewell 垂直参考 GR 能否帮助定位 TVT 偏移；
-3. Geology label 能否约束 residual correction；
-4. GR/typewell 信息什么时候可信，什么时候必须回退。
+2. 先做 horizontal self-GR alignment，再判断是否需要 typewell 证据；
+3. typewell 垂直参考 GR 能否帮助定位 TVT 偏移；
+4. Geology label 能否约束 residual correction；
+5. GR/typewell 信息什么时候可信，什么时候必须回退。
 
 ## 2. 输入与输出
 
 ### 2.1 输入
 
 ```text
-data/train/*__horizontal_well.csv
-data/train/*__typewell.csv
-data/test/*__horizontal_well.csv
-data/test/*__typewell.csv
+data/raw/train/*__horizontal_well.csv
+data/raw/train/*__typewell.csv
+data/raw/test/*__horizontal_well.csv
+data/raw/test/*__typewell.csv
 features/baseline_features_*.csv
 features/geometry_features_*.csv
 outputs/residual_geometry_oof.csv
@@ -218,7 +219,36 @@ nearby_geology_change_flag
 - rare label 合并规则必须只由训练 label 频次决定；
 - test 中没有 `Geology`，所以这里的编码只能用于训练期分析、类别统计和路由规则，不能作为 test 直接特征。
 
-## 5. GR / Typewell 对齐计划
+## 5. Horizontal self-GR 对齐计划
+
+### 5.1 对齐目标
+
+`reports/data_raw_review.md` 已确认，PPTX 提示 PS 前 horizontal GR 可能比 typewell 更能解释 PS 后 horizontal GR。因此 Part 3 不能只做 typewell 对齐，还要先做水平井自身的 GR 模式对齐。
+
+目标是：
+
+- 用已知段的 horizontal GR 作为参考模板；
+- 在 hidden interval 中寻找与已知段最相似的 motif、shape 或局部统计；
+- 判断 hidden 段是延续、漂移，还是发生了层位偏移。
+
+### 5.2 特征
+
+```text
+known_tail_GR_mean
+known_tail_GR_std
+known_tail_GR_gradient
+hidden_GR_similarity_to_known_tail
+hidden_GR_change_point_score
+hidden_GR_motif_score
+```
+
+### 5.3 路由关系
+
+- self-GR alignment 先做低成本、强约束版本；
+- typewell alignment 作为第二路证据；
+- 两者一致时提高置信度，不一致时回退 baseline 或 geometry residual。
+
+## 6. GR / Typewell 对齐计划
 
 ### 5.1 对齐目标
 
@@ -315,7 +345,7 @@ positive offset means predicted TVT should move deeper/larger
 
 所以 DTW 不作为第一版主线，只作为后期增强。
 
-## 6. 模型结构
+## 7. 模型结构
 
 ### 6.1 GR residual model
 
@@ -379,7 +409,7 @@ alignment_residual = f(best_offset, similarity_confidence)
 - 给统一修正器提供一个可解释的 correction source；
 - 作为后续 blend / routing 的输入，而不是和 baseline 平行竞争。
 
-## 7. 验证切片
+## 8. 验证切片
 
 GR/typewell 模块不能只看 overall RMSE。
 
@@ -395,9 +425,9 @@ GR/typewell 模块不能只看 overall RMSE。
 | typewell similarity high | 对齐可信场景 |
 | typewell similarity low | 对齐不可信场景 |
 
-## 8. 防过拟合规则
+## 9. 防过拟合规则
 
-### 8.1 GR 不能变成泄漏代理
+### 9.1 GR 不能变成泄漏代理
 
 不能用 hidden target 真值构造 GR 特征。
 
@@ -416,7 +446,7 @@ GR/typewell 模块不能只看 overall RMSE。
 
 注意：`typewell Geology` 只在训练集存在，所以它适合做训练期分析、类别聚合和路由先验，不适合直接进入 test 特征表。
 
-### 8.2 Alignment 需要 confidence
+### 9.2 Alignment 需要 confidence
 
 如果相似度低：
 

@@ -12,6 +12,8 @@
 4. 建立 Kaggle notebook 复现流程；
 5. 建立 leaderboard 反馈闭环，持续冲击第一名。
 
+当前仓库里，Part 2 的旧结果和最终提交成品已经被清理掉了。下面列出的 outputs / submissions / reports 更像是本阶段需要重新生成的契约，而不是已经稳定保留的冻结产物。
+
 ## 2. 输入与输出
 
 ### 2.1 输入
@@ -48,7 +50,7 @@ notebooks/
 `-- rogii_submission_pipeline.ipynb
 ```
 
-当前已落地的关键文件：
+当前可直接复用的脚本与文档：
 
 - `scripts/blend_predictions.py`
 - `scripts/postprocess_predictions.py`
@@ -58,9 +60,6 @@ notebooks/
 - `reports/postprocess_report.md`
 - `reports/submission_log.md`
 - `reports/final_model_card.md`
-- `submission.csv`
-- `submissions/balanced_submission.csv`
-- `submissions/balanced_postprocessed_submission.csv`
 
 ## 3. 模型池设计
 

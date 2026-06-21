@@ -17,12 +17,14 @@
 ### 2.1 输入
 
 ```text
-data/
+data/raw/
 |-- train/
 |-- test/
 |-- sample_submission.csv
 `-- AI_wellbore_geology_prediction_task_en.pptx
 ```
+
+仓库里的 `data/` 只是占位目录，真正的比赛原始数据都应放在 `data/raw/`。
 
 ### 2.2 输出
 
