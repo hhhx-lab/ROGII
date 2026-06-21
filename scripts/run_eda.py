@@ -6,9 +6,10 @@ from pathlib import Path
 
 import pandas as pd
 
+from data_paths import load_sample_submission, resolve_competition_root
+
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT / "data" / "raw"
 REPORT_DIR = ROOT / "reports"
 REPORT_PATH = REPORT_DIR / "eda_summary.md"
 
@@ -20,16 +21,16 @@ def pct(value: float, total: float) -> float:
 def main() -> int:
     REPORT_DIR.mkdir(exist_ok=True)
 
-    train_dir = DATA_DIR / "train"
-    test_dir = DATA_DIR / "test"
-    sample_path = DATA_DIR / "sample_submission.csv"
+    data_root = resolve_competition_root()
+    train_dir = data_root / "train"
+    test_dir = data_root / "test"
+    sample = load_sample_submission()
 
     train_horizontal = sorted(train_dir.glob("*__horizontal_well.csv"))
     train_typewell = sorted(train_dir.glob("*__typewell.csv"))
     train_png = sorted(train_dir.glob("*.png"))
     test_horizontal = sorted(test_dir.glob("*__horizontal_well.csv"))
     test_typewell = sorted(test_dir.glob("*__typewell.csv"))
-    sample = pd.read_csv(sample_path)
 
     train_rows = []
     missing = Counter()
@@ -129,12 +130,14 @@ def main() -> int:
         [
             "",
             "## First Observations",
-            "",
-            "- The public test folder contains only three example wells; hidden evaluation wells are substituted by Kaggle at submission time.",
-            "- `TVT_input` is available before the evaluation interval and missing exactly where `sample_submission.csv` asks for predictions.",
-            "- A per-well extrapolation baseline is a strong first sanity check because visible targets continue from the known `TVT_input` segment.",
-            "- Stronger models should use cross-well validation rather than trusting the three visible test wells.",
-        ]
+        "",
+        "- The public test folder contains only three example wells; hidden evaluation wells are substituted by Kaggle at submission time.",
+        "- `TVT_input` is available before the evaluation interval and missing exactly where `sample_submission.csv` asks for predictions.",
+        "- A per-well extrapolation baseline is a strong first sanity check because visible targets continue from the known `TVT_input` segment.",
+        "- Stronger models should use cross-well validation rather than trusting the three visible test wells.",
+        "",
+        f"Data root resolved as: `{data_root.relative_to(ROOT)}`",
+    ]
     )
 
     REPORT_PATH.write_text("\n".join(lines) + "\n")

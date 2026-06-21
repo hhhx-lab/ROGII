@@ -17,7 +17,7 @@
 ### 2.1 输入
 
 ```text
-data/raw/
+data/
 |-- train/
 |-- test/
 |-- sample_submission.csv

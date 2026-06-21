@@ -106,3 +106,5 @@
 - `TVT_input` is available before the evaluation interval and missing exactly where `sample_submission.csv` asks for predictions.
 - A per-well extrapolation baseline is a strong first sanity check because visible targets continue from the known `TVT_input` segment.
 - Stronger models should use cross-well validation rather than trusting the three visible test wells.
+
+Data root resolved as: `data`

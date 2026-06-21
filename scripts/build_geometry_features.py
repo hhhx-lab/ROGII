@@ -1,131 +1,183 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import argparse
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
-from part2_utils import FEATURE_DIR, add_key_columns, ensure_part2_dirs, slope_stats, target_rows_from_tvt_input
-from rogii_utils import DATA_DIR, TEST_DIR, TRAIN_DIR, assert_data_contract_ready, parse_submission_ids, train_wells
+from data_paths import resolve_test_dir, resolve_train_dir
 
 
-GEOMETRY_TRAIN_PATH = FEATURE_DIR / "geometry_features_train.parquet"
-GEOMETRY_TEST_PATH = FEATURE_DIR / "geometry_features_test.parquet"
-ROLLING_WINDOWS = [25, 50, 100, 200, 500]
+ROOT = Path(__file__).resolve().parents[1]
+FEATURE_DIR = ROOT / "features"
+
+WINDOWS = (25, 50, 100, 200, 500)
 
 
-def safe_divide(num: np.ndarray, den: np.ndarray) -> np.ndarray:
-    return np.divide(num, den, out=np.zeros_like(num, dtype=float), where=den != 0)
+def safe_div(numerator: np.ndarray, denominator: np.ndarray, fill: float = 0.0) -> np.ndarray:
+    numerator = np.asarray(numerator, dtype=float)
+    denominator = np.asarray(denominator, dtype=float)
+    out = np.full_like(numerator, fill, dtype=float)
+    mask = np.isfinite(numerator) & np.isfinite(denominator) & (np.abs(denominator) > 1e-12)
+    out[mask] = numerator[mask] / denominator[mask]
+    return out
 
 
-def full_well_geometry(df: pd.DataFrame) -> pd.DataFrame:
+def zscore(values: np.ndarray) -> np.ndarray:
+    values = np.asarray(values, dtype=float)
+    mean = np.nanmean(values) if np.isfinite(values).any() else 0.0
+    std = np.nanstd(values) if np.isfinite(values).any() else 0.0
+    if not np.isfinite(std) or std == 0.0:
+        return np.zeros_like(values, dtype=float)
+    return (values - mean) / std
+
+
+def add_rolling_features(frame: pd.DataFrame, base: pd.Series, prefix: str) -> None:
+    for window in WINDOWS:
+        roll = base.rolling(window=window, min_periods=1)
+        frame[f"{prefix}_roll_mean_{window}"] = roll.mean().to_numpy(dtype=float)
+        frame[f"{prefix}_roll_std_{window}"] = roll.std(ddof=0).fillna(0.0).to_numpy(dtype=float)
+        frame[f"{prefix}_roll_min_{window}"] = roll.min().to_numpy(dtype=float)
+        frame[f"{prefix}_roll_max_{window}"] = roll.max().to_numpy(dtype=float)
+
+
+def build_frame(df: pd.DataFrame, well: str, split: str) -> pd.DataFrame:
     md = df["MD"].to_numpy(dtype=float)
     x = df["X"].to_numpy(dtype=float)
     y = df["Y"].to_numpy(dtype=float)
     z = df["Z"].to_numpy(dtype=float)
+    rows = np.arange(len(df))
+    target_rows = np.flatnonzero(df["TVT_input"].isna().to_numpy())
 
-    d_md = np.r_[0.0, np.diff(md)]
-    d_x = np.r_[0.0, np.diff(x)]
-    d_y = np.r_[0.0, np.diff(y)]
-    d_z = np.r_[0.0, np.diff(z)]
-    d_xy = np.sqrt(d_x**2 + d_y**2)
-    dz_dmd = safe_divide(d_z, d_md)
-    dxy_dmd = safe_divide(d_xy, d_md)
-    ddz_dmd = np.r_[0.0, np.diff(dz_dmd)]
-    curvature = np.sqrt(ddz_dmd**2 + np.r_[0.0, np.diff(dxy_dmd)] ** 2)
+    dmd = np.diff(md, prepend=md[0] if len(md) else 0.0)
+    dx = np.diff(x, prepend=x[0] if len(x) else 0.0)
+    dy = np.diff(y, prepend=y[0] if len(y) else 0.0)
+    dz = np.diff(z, prepend=z[0] if len(z) else 0.0)
 
-    out = pd.DataFrame(
+    dX_dMD = safe_div(dx, dmd)
+    dY_dMD = safe_div(dy, dmd)
+    dZ_dMD = safe_div(dz, dmd)
+    dXY_dMD = np.sqrt(dX_dMD**2 + dY_dMD**2)
+    dXYZ_norm = np.sqrt(dx**2 + dy**2 + dz**2)
+
+    if len(md) >= 2:
+        ddX_dMD = np.gradient(dX_dMD, md, edge_order=1)
+        ddY_dMD = np.gradient(dY_dMD, md, edge_order=1)
+        ddZ_dMD = np.gradient(dZ_dMD, md, edge_order=1)
+    else:
+        ddX_dMD = np.zeros_like(md)
+        ddY_dMD = np.zeros_like(md)
+        ddZ_dMD = np.zeros_like(md)
+
+    trajectory_speed_proxy = safe_div(dXYZ_norm, np.maximum(np.abs(dmd), 1e-6))
+    trajectory_curvature_proxy = np.sqrt(ddX_dMD**2 + ddY_dMD**2 + ddZ_dMD**2)
+    inclination_change_proxy = np.abs(ddZ_dMD)
+    path_length = np.cumsum(np.r_[0.0, dXYZ_norm[1:]]) if len(dXYZ_norm) else np.array([], dtype=float)
+
+    total_rows = len(df)
+    md_span = float(np.nanmax(md) - np.nanmin(md)) if total_rows else float("nan")
+    x_span = float(np.nanmax(x) - np.nanmin(x)) if total_rows else float("nan")
+    y_span = float(np.nanmax(y) - np.nanmin(y)) if total_rows else float("nan")
+    z_span = float(np.nanmax(z) - np.nanmin(z)) if total_rows else float("nan")
+    known_mask = ~df["TVT_input"].isna().to_numpy()
+    known_rows = int(known_mask.sum())
+    target_count = int(len(target_rows))
+
+    frame = pd.DataFrame(
         {
+            "well": well,
+            "split": split,
+            "row": rows,
+            "id": [f"{well}_{int(row)}" for row in rows],
+            "row_position": rows / max(total_rows - 1, 1),
             "MD": md,
             "X": x,
             "Y": y,
             "Z": z,
-            "row_index": np.arange(len(df), dtype=np.int32),
-            "row_position": np.arange(len(df), dtype=float) / max(1, len(df) - 1),
-            "MD_normalized_within_well": (md - md.min()) / max(1e-6, md.max() - md.min()),
-            "Z_normalized_within_well": (z - z.min()) / max(1e-6, z.max() - z.min()),
-            "dX": d_x,
-            "dY": d_y,
-            "dZ": d_z,
-            "dMD": d_md,
-            "dZ_dMD": dz_dmd,
-            "dXY_dMD": dxy_dmd,
-            "ddZ_dMD": ddz_dmd,
-            "trajectory_curvature_proxy": curvature,
-            "inclination_change_proxy": np.abs(ddz_dmd),
+            "MD_norm": (md - np.nanmin(md)) / max(md_span, 1e-6),
+            "X_centered": x - np.nanmean(x),
+            "Y_centered": y - np.nanmean(y),
+            "Z_centered": z - np.nanmean(z),
+            "X_zscore": zscore(x),
+            "Y_zscore": zscore(y),
+            "Z_zscore": zscore(z),
+            "MD_centered": md - np.nanmean(md),
+            "dMD": dmd,
+            "dX": dx,
+            "dY": dy,
+            "dZ": dz,
+            "dX_dMD": dX_dMD,
+            "dY_dMD": dY_dMD,
+            "dZ_dMD": dZ_dMD,
+            "dXY_dMD": dXY_dMD,
+            "dXYZ_norm": dXYZ_norm,
+            "ddX_dMD": ddX_dMD,
+            "ddY_dMD": ddY_dMD,
+            "ddZ_dMD": ddZ_dMD,
+            "trajectory_speed_proxy": trajectory_speed_proxy,
+            "trajectory_curvature_proxy": trajectory_curvature_proxy,
+            "inclination_change_proxy": inclination_change_proxy,
+            "path_length_cum": path_length,
+            "path_length_norm": path_length / max(float(path_length[-1]) if len(path_length) else 1.0, 1e-6),
+            "well_total_rows": total_rows,
+            "well_MD_span": md_span,
+            "well_X_span": x_span,
+            "well_Y_span": y_span,
+            "well_Z_span": z_span,
+            "well_known_rows": known_rows,
+            "well_target_rows": target_count,
+            "well_known_ratio": float(known_rows / max(total_rows, 1)),
+            "well_target_ratio": float(target_count / max(total_rows, 1)),
+            "well_gr_missing_rate": float(df["GR"].isna().mean()),
         }
     )
 
-    z_series = pd.Series(z)
-    dz_series = pd.Series(dz_dmd)
-    curv_series = pd.Series(curvature)
-    for window in ROLLING_WINDOWS:
-        min_periods = max(2, window // 5)
-        out[f"rolling_Z_mean_{window}"] = z_series.rolling(window, min_periods=min_periods).mean()
-        out[f"rolling_Z_std_{window}"] = z_series.rolling(window, min_periods=min_periods).std()
-        out[f"rolling_dZ_dMD_mean_{window}"] = dz_series.rolling(window, min_periods=min_periods).mean()
-        out[f"rolling_dZ_dMD_std_{window}"] = dz_series.rolling(window, min_periods=min_periods).std()
-        out[f"rolling_curvature_mean_{window}"] = curv_series.rolling(window, min_periods=min_periods).mean()
+    add_rolling_features(frame, pd.Series(z), "Z")
+    add_rolling_features(frame, pd.Series(dZ_dMD), "dZ_dMD")
+    add_rolling_features(frame, pd.Series(trajectory_curvature_proxy), "curvature")
+    add_rolling_features(frame, pd.Series(trajectory_speed_proxy), "speed")
 
-    fill_values = {
-        col: 0.0
-        for col in out.columns
-        if col.startswith("rolling_") or col in {"dZ_dMD", "dXY_dMD", "ddZ_dMD", "trajectory_curvature_proxy"}
-    }
-    out = out.fillna(fill_values)
-    return out.astype({col: "float32" for col in out.select_dtypes(include=["float64"]).columns})
+    target_columns = [c for c in frame.columns if c not in {"row", "id", "well", "split"}]
+    return frame.loc[target_rows, ["well", "split", "row", "id", *target_columns]].copy()
 
 
-def well_level_features(df: pd.DataFrame, target_rows: np.ndarray) -> dict[str, float]:
-    known_end = int(target_rows[0] - 1)
-    known = df.loc[:known_end]
-    known_md = known["MD"].to_numpy(dtype=float)
-    known_tvt = known["TVT_input"].to_numpy(dtype=float)
-    stats = slope_stats(known_md, known_tvt)
-    md = df["MD"].to_numpy(dtype=float)
-    z = df["Z"].to_numpy(dtype=float)
-    return {
-        "well_total_rows": float(len(df)),
-        "well_MD_span": float(md.max() - md.min()),
-        "well_Z_span": float(z.max() - z.min()),
-        "well_known_TVT_span": float(np.nanmax(known_tvt) - np.nanmin(known_tvt)) if len(known_tvt) else 0.0,
-        "well_known_slope_mean": float(stats["mean"]),
-        "well_known_slope_std": float(stats["std"]),
-        "well_GR_missing_rate": float(df["GR"].isna().mean()) if "GR" in df else 1.0,
-        "well_target_length": float(len(target_rows)),
-    }
+def append_csv(frame: pd.DataFrame, path: Path) -> None:
+    header = not path.exists()
+    frame.to_csv(path, mode="a", header=header, index=False)
 
 
-def build_for_well(df: pd.DataFrame, well: str, target_rows: np.ndarray) -> pd.DataFrame:
-    full = full_well_geometry(df)
-    target = full.iloc[target_rows].reset_index(drop=True)
-    for col, value in well_level_features(df, target_rows).items():
-        target[col] = np.float32(value)
-    return add_key_columns(target, well, target_rows)
+def reset_outputs() -> None:
+    FEATURE_DIR.mkdir(exist_ok=True)
+    for name in [
+        "geometry_features_train.csv",
+        "geometry_features_test.csv",
+    ]:
+        path = FEATURE_DIR / name
+        if path.exists():
+            path.unlink()
+
+
+def build_split(split: str, data_dir: Path, limit_wells: int | None) -> None:
+    for idx, path in enumerate(sorted(data_dir.glob("*__horizontal_well.csv"))):
+        if limit_wells is not None and idx >= limit_wells:
+            break
+        well = path.name.split("__")[0]
+        df = pd.read_csv(path)
+        frame = build_frame(df, well, split)
+        append_csv(frame, FEATURE_DIR / f"geometry_features_{split}.csv")
 
 
 def main() -> int:
-    ensure_part2_dirs()
-    assert_data_contract_ready()
+    parser = argparse.ArgumentParser(description="Build geometry feature tables.")
+    parser.add_argument("--limit-wells", type=int, default=None, help="Limit the number of wells per split for smoke tests.")
+    args = parser.parse_args()
 
-    train_parts = []
-    for well in train_wells():
-        df = pd.read_csv(TRAIN_DIR / f"{well}__horizontal_well.csv")
-        train_parts.append(build_for_well(df, well, target_rows_from_tvt_input(df)))
-    train_features = pd.concat(train_parts, ignore_index=True)
-    train_features.to_parquet(GEOMETRY_TRAIN_PATH, index=False)
-
-    sample = pd.read_csv(DATA_DIR / "sample_submission.csv")
-    parsed = parse_submission_ids(sample)
-    test_parts = []
-    for well, part in parsed.groupby("well", sort=True):
-        df = pd.read_csv(TEST_DIR / f"{well}__horizontal_well.csv")
-        test_parts.append(build_for_well(df, well, part["row"].to_numpy(dtype=int)))
-    test_features = pd.concat(test_parts, ignore_index=True)
-    test_features.to_parquet(GEOMETRY_TEST_PATH, index=False)
-
-    print(f"Wrote {GEOMETRY_TRAIN_PATH}")
-    print(f"Wrote {GEOMETRY_TEST_PATH}")
-    print(f"train_rows={len(train_features)} test_rows={len(test_features)}")
+    reset_outputs()
+    build_split("train", resolve_train_dir(), args.limit_wells)
+    build_split("test", resolve_test_dir(), args.limit_wells)
+    print(f"Wrote geometry features to {FEATURE_DIR}")
     return 0
 
 

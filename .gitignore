@@ -23,3 +23,9 @@ reports/server_part2_full_run_summary.md
 reports/server_part2_full_run_summary.json
 reports/server_part2_full_run_logs/
 *.zip
+.DS_Store
+AI_wellbore_geology_prediction_task_en.pptx
+train-20260620T080024Z-3-001.zip
+test-20260620T080007Z-3-001.zip
+submission.csv
+submissions/*.csv

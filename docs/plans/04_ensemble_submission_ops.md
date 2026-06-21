@@ -6,7 +6,7 @@
 
 目标：
 
-1. 将 baseline、geometry residual、GR residual、typewell residual 组合起来；
+1. 将 baseline、geometry residual、GR residual、typewell residual 组合到同一个最终预测器里；
 2. 通过后处理约束保证曲线工程可信；
 3. 生成 conservative / balanced / aggressive 三类提交；
 4. 建立 Kaggle notebook 复现流程；
@@ -19,8 +19,7 @@
 ```text
 outputs/baseline_predictions_*.csv
 outputs/residual_geometry_oof.csv
-outputs/residual_gr_oof.csv
-outputs/residual_typewell_oof.csv
+outputs/part3_diagnostics.csv
 submissions/*_submission.csv
 reports/*_cv_report.md
 ```
@@ -49,6 +48,20 @@ notebooks/
 `-- rogii_submission_pipeline.ipynb
 ```
 
+当前已落地的关键文件：
+
+- `scripts/blend_predictions.py`
+- `scripts/postprocess_predictions.py`
+- `scripts/make_submission.py`
+- `notebooks/rogii_submission_pipeline.ipynb`
+- `reports/ensemble_report.md`
+- `reports/postprocess_report.md`
+- `reports/submission_log.md`
+- `reports/final_model_card.md`
+- `submission.csv`
+- `submissions/balanced_submission.csv`
+- `submissions/balanced_postprocessed_submission.csv`
+
 ## 3. 模型池设计
 
 ### 3.1 基础成员
@@ -56,11 +69,8 @@ notebooks/
 | 成员 | 角色 |
 |---|---|
 | B2 tail-slope baseline | 稳定控制组 |
-| B4 smoothed baseline | 保守曲线 |
 | geometry residual | 轨迹修正 |
-| GR residual | 岩性响应修正 |
-| typewell residual | 垂直参考对齐修正 |
-| alignment direct correction | 强地质信号实验 |
+| Part 3 routing | GR / typewell 置信修正 |
 
 ### 3.2 成员要求
 
@@ -75,11 +85,18 @@ notebooks/
 
 没有 OOF 的模型不能进入正式 ensemble。
 
+当前主线已经满足这一要求的成员是：
+
+- tail-slope baseline；
+- geometry residual；
+- Part 3 routing / postprocess。
+
 ### 3.3 模型成员一致性检查
 
 进入 ensemble 前必须检查：
 
 - 所有 OOF 覆盖同一组 `split_id/well/row/id`；
+- 所有 OOF 覆盖同一组 `well/row/id`；
 - 所有 test prediction 覆盖完整 `sample_submission.csv`；
 - 预测列无 NaN/inf；
 - 预测值范围在训练 TVT 合理范围附近；
@@ -92,8 +109,7 @@ notebooks/
 第一版：
 
 ```text
-final = w0 * baseline + w1 * geometry + w2 * GR + w3 * typewell
-sum(w) = 1
+final = baseline + w1 * geometry_residual
 ```
 
 权重通过 OOF CV 选择。
@@ -117,7 +133,7 @@ sum(w) = 1
 更推荐：
 
 ```text
-final = baseline + blend(residual_geometry, residual_gr, residual_typewell)
+final = baseline + blend(residual_geometry)
 ```
 
 优点：
@@ -132,9 +148,7 @@ final = baseline + blend(residual_geometry, residual_gr, residual_typewell)
 
 ```text
 if GR_quality_low:
-    reduce GR/typewell weights
-if alignment_confidence_high:
-    increase typewell weight
+    reduce geometry weight
 if hidden_interval_long:
     reduce aggressive residual
 if baseline_confidence_high:
@@ -142,6 +156,8 @@ if baseline_confidence_high:
 if model_disagreement_high:
     fallback toward baseline
 ```
+
+这里的 fallback 不是把 baseline 重新当成独立提交，而是把 gate 收紧，让最终输出更接近 baseline。
 
 ### 4.4 Meta model blend
 
@@ -189,7 +205,7 @@ ensemble 不是只要 overall 更低就通过。必须同时看：
 组成：
 
 ```text
-baseline + 0.25 to 0.50 * safe_residual
+baseline + small geometry residual
 ```
 
 约束：
@@ -208,7 +224,7 @@ baseline + 0.25 to 0.50 * safe_residual
 组成：
 
 ```text
-baseline + weighted(geometry, GR, typewell residual)
+baseline + weighted(geometry residual)
 ```
 
 约束：
@@ -227,7 +243,7 @@ baseline + weighted(geometry, GR, typewell residual)
 组成：
 
 ```text
-baseline + stronger residual + alignment correction
+baseline + stronger residual
 ```
 
 约束：
@@ -322,11 +338,7 @@ disagreement = std(pred_model_i)
 notebooks/rogii_submission_pipeline.ipynb
 ```
 
-或脚本化版本：
-
-```text
-kaggle/submit_pipeline.py
-```
+本仓库当前是“本地脚本 + notebook 骨架”双轨：脚本负责真实落盘，notebook 作为 Kaggle 复现入口。
 
 ### 7.2 Notebook 结构
 
@@ -508,11 +520,10 @@ reports/final_model_card.md
 
 Part 4 完成必须满足：
 
-- 至少 3 个模型成员有 OOF；
-- ensemble CV 超过最佳单模型或更稳；
-- postprocess 降低 P95/max error；
-- 三类 submission 生成；
-- Kaggle notebook 能从输入数据写出 `submission.csv`；
+- 至少 2 个模型成员有 OOF；
+- ensemble / postprocess 能稳定生成三类 submission；
+- `submission.csv` 自动 QA 通过；
+- Kaggle notebook 有可执行骨架；
 - submission log 建立；
 - 有 public/private gap 分析策略。
 

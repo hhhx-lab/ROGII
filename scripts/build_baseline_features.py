@@ -1,252 +1,212 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import argparse
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
-from part2_utils import BASELINE_NAME, FEATURE_DIR, data_hash_short, ensure_part2_dirs, slope_stats, target_rows_from_tvt_input
-from rogii_utils import (
-    DATA_DIR,
-    REPORT_DIR,
-    TEST_DIR,
-    TRAIN_DIR,
-    assert_data_contract_ready,
-    parse_submission_ids,
-    run_baseline,
-    train_wells,
-)
+from baseline_tail_slope import tail_slope_prediction
+from data_paths import load_sample_submission, resolve_test_dir, resolve_train_dir
 
 
-BASELINE_TRAIN_PATH = FEATURE_DIR / "baseline_features_train.parquet"
-BASELINE_TEST_PATH = FEATURE_DIR / "baseline_features_test.parquet"
-TARGET_PATH = FEATURE_DIR / "residual_targets.parquet"
-REPORT_PATH = REPORT_DIR / "residual_target_report.md"
+ROOT = Path(__file__).resolve().parents[1]
+FEATURE_DIR = ROOT / "features"
+OUTPUT_DIR = ROOT / "outputs"
+REPORT_DIR = ROOT / "reports"
 
 
-def summarize_residual_group(frame: pd.DataFrame, group_col: str) -> pd.DataFrame:
-    rows = []
-    for value, part in frame.groupby(group_col, observed=True, dropna=False):
-        residual = part["residual_target"].astype(float)
-        abs_residual = residual.abs()
-        rows.append(
-            {
-                group_col: str(value),
-                "rows": len(part),
-                "wells": part["well"].nunique(),
-                "residual_mean": residual.mean(),
-                "residual_std": residual.std(),
-                "residual_rmse": float(np.sqrt(np.mean(np.square(residual)))),
-                "median_abs_residual": abs_residual.median(),
-                "p95_abs_residual": abs_residual.quantile(0.95),
-            }
-        )
-    return pd.DataFrame(rows)
+def slope_stats(values: np.ndarray, md: np.ndarray) -> tuple[float, float]:
+    if len(values) < 3:
+        return float("nan"), float("nan")
+    slopes = np.diff(values) / np.diff(md)
+    slopes = slopes[np.isfinite(slopes)]
+    if len(slopes) == 0:
+        return float("nan"), float("nan")
+    return float(np.median(slopes)), float(np.std(slopes))
 
 
-def build_rows(df: pd.DataFrame, well: str, target_rows: np.ndarray, truth_available: bool) -> tuple[pd.DataFrame, pd.DataFrame | None]:
-    known_end = int(target_rows[0] - 1)
-    known = df.loc[:known_end]
-    known_md = known["MD"].to_numpy(dtype=float)
-    known_tvt = known["TVT_input"].to_numpy(dtype=float)
-    target_md = df.loc[target_rows, "MD"].to_numpy(dtype=float)
-    target_gr = df.loc[target_rows, "GR"]
-    stats = slope_stats(known_md, known_tvt)
+def baseline_confidence(known_count: int, target_count: int, slope_std: float, gr_missing_rate: float) -> float:
+    score = 0.0
+    if np.isfinite(slope_std):
+        score = float(1.0 / (1.0 + slope_std))
+    score *= float(min(known_count / max(target_count, 1), 2.0) / 2.0)
+    if np.isfinite(gr_missing_rate):
+        score *= float(1.0 - min(gr_missing_rate, 1.0) * 0.5)
+    return float(max(score, 0.0))
 
-    baseline_tvt, _ = run_baseline(
-        df,
-        target_rows,
-        baseline=BASELINE_NAME,
-        known_allowed_start_row=0,
-        known_allowed_end_row=known_end,
-    )
-    b1_tvt, b1_diag = run_baseline(df, target_rows, baseline="B1_linear_md", known_allowed_start_row=0, known_allowed_end_row=known_end)
-    b2_50, b2_50_diag = run_baseline(df, target_rows, baseline="B2_tail_slope_k50", known_allowed_start_row=0, known_allowed_end_row=known_end)
-    b2_200, b2_200_diag = run_baseline(df, target_rows, baseline="B2_tail_slope_k200", known_allowed_start_row=0, known_allowed_end_row=known_end)
-    b2_500, b2_500_diag = run_baseline(df, target_rows, baseline="B2_tail_slope_k500", known_allowed_start_row=0, known_allowed_end_row=known_end)
 
-    target_rows_count = len(target_rows)
-    known_rows_count = len(known)
-    distance_md = target_md - float(known_md[-1])
-    distance_rows = target_rows - known_end
-    gr_missing_rate = float(target_gr.isna().mean()) if len(target_gr) else 0.0
-    slope_stability = 1.0 / (1.0 + abs(stats["std"]))
-    length_penalty = 1.0 / (1.0 + target_rows_count / max(1.0, known_rows_count))
-    gr_quality = 1.0 - gr_missing_rate
-    baseline_confidence = float(np.clip(0.45 * slope_stability + 0.35 * length_penalty + 0.20 * gr_quality, 0.0, 1.0))
+def target_rows_for(df: pd.DataFrame) -> np.ndarray:
+    return np.flatnonzero(df["TVT_input"].isna().to_numpy())
 
-    features = pd.DataFrame(
+
+def build_frame(df: pd.DataFrame, split: str, well: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    target_rows = target_rows_for(df)
+    baseline_pred = tail_slope_prediction(df, target_rows, tail_window=200)
+
+    known_mask = ~df["TVT_input"].isna().to_numpy()
+    known_count = int(known_mask.sum())
+    target_count = int(len(target_rows))
+    known_md = df.loc[known_mask, "MD"].to_numpy(dtype=float)
+    known_tvt = df.loc[known_mask, "TVT_input"].to_numpy(dtype=float)
+    slope_med, slope_std = slope_stats(known_tvt, known_md)
+    gr_missing_rate = float(df.loc[target_rows, "GR"].isna().mean()) if target_count else float("nan")
+    conf = baseline_confidence(known_count, target_count, slope_std, gr_missing_rate)
+
+    last_known_row = int(np.flatnonzero(known_mask)[-1]) if known_mask.any() else 0
+    last_known_md = float(df.loc[known_mask, "MD"].iloc[-1]) if known_mask.any() else float(df["MD"].iloc[0])
+    last_known_tvt = float(df.loc[known_mask, "TVT_input"].iloc[-1]) if known_mask.any() else float(df["TVT"].iloc[0])
+    first_known_tvt = float(df.loc[known_mask, "TVT_input"].iloc[0]) if known_mask.any() else float(df["TVT"].iloc[0])
+
+    frame = pd.DataFrame(
         {
-            "split_id": f"original_hidden__{well}__{int(target_rows[0])}_{int(target_rows[-1])}",
             "well": well,
-            "row": target_rows.astype(np.int32),
+            "split": split,
+            "row": target_rows,
             "id": [f"{well}_{int(row)}" for row in target_rows],
-            "baseline_name": BASELINE_NAME,
-            "baseline_tvt": baseline_tvt.astype("float32"),
-            "baseline_slope": np.zeros(target_rows_count, dtype="float32"),
-            "baseline_tail_window": np.zeros(target_rows_count, dtype="float32"),
-            "baseline_local_slope_mean": np.full(target_rows_count, stats["mean"], dtype="float32"),
-            "baseline_local_slope_std": np.full(target_rows_count, stats["std"], dtype="float32"),
-            "baseline_known_tail_slope_50": np.full(target_rows_count, stats["tail_50"], dtype="float32"),
-            "baseline_known_tail_slope_100": np.full(target_rows_count, stats["tail_100"], dtype="float32"),
-            "baseline_known_tail_slope_200": np.full(target_rows_count, stats["tail_200"], dtype="float32"),
-            "baseline_known_tail_slope_500": np.full(target_rows_count, stats["tail_500"], dtype="float32"),
-            "baseline_confidence": np.full(target_rows_count, baseline_confidence, dtype="float32"),
-            "baseline_distance_penalty": (1.0 / (1.0 + distance_rows / max(1.0, target_rows_count))).astype("float32"),
-            "last_known_row": np.full(target_rows_count, known_end, dtype="int32"),
-            "last_known_MD": np.full(target_rows_count, known_md[-1], dtype="float32"),
-            "last_known_TVT_input": np.full(target_rows_count, known_tvt[-1], dtype="float32"),
-            "distance_row_from_last_known": distance_rows.astype("float32"),
-            "distance_MD_from_last_known": distance_md.astype("float32"),
-            "known_rows_count": np.full(target_rows_count, known_rows_count, dtype="int32"),
-            "target_rows_count": np.full(target_rows_count, target_rows_count, dtype="int32"),
-            "known_ratio": np.full(target_rows_count, known_rows_count / len(df), dtype="float32"),
-            "target_gr_missing_rate": np.full(target_rows_count, gr_missing_rate, dtype="float32"),
-            "b1_linear_md_pred": b1_tvt.astype("float32"),
-            "b1_linear_md_slope": np.full(target_rows_count, b1_diag.get("baseline_slope", 0.0), dtype="float32"),
-            "b2_tail_slope_k50_pred": b2_50.astype("float32"),
-            "b2_tail_slope_k50_slope": np.full(target_rows_count, b2_50_diag.get("baseline_slope", 0.0), dtype="float32"),
-            "b2_tail_slope_k200_pred": b2_200.astype("float32"),
-            "b2_tail_slope_k200_slope": np.full(target_rows_count, b2_200_diag.get("baseline_slope", 0.0), dtype="float32"),
-            "b2_tail_slope_k500_pred": b2_500.astype("float32"),
-            "b2_tail_slope_k500_slope": np.full(target_rows_count, b2_500_diag.get("baseline_slope", 0.0), dtype="float32"),
+            "baseline_tvt": baseline_pred,
+            "known_rows": known_count,
+            "target_rows": target_count,
+            "known_ratio": float(known_count / max(len(df), 1)),
+            "target_ratio": float(target_count / max(len(df), 1)),
+            "last_known_row": last_known_row,
+            "last_known_md": last_known_md,
+            "last_known_tvt": last_known_tvt,
+            "first_known_tvt": first_known_tvt,
+            "distance_from_last_known_row": target_rows - last_known_row,
+            "distance_from_last_known_md": df.loc[target_rows, "MD"].to_numpy(dtype=float) - last_known_md,
+            "baseline_slope_median": slope_med,
+            "baseline_slope_std": slope_std,
+            "baseline_confidence": conf,
+            "gr_missing_rate": gr_missing_rate,
+            "baseline_tail_window": 200,
+            "baseline_pred_delta_from_last_known": baseline_pred - last_known_tvt,
+            "baseline_pred_delta_from_first_known": baseline_pred - first_known_tvt,
+            "baseline_pred_delta_from_known_span": baseline_pred - float(np.nanmean(known_tvt)) if len(known_tvt) else baseline_pred,
         }
     )
 
-    targets = None
-    if truth_available:
-        truth = df.loc[target_rows, "TVT"].to_numpy(dtype=float)
-        targets = pd.DataFrame(
+    if len(target_rows):
+        frame["baseline_md_step"] = np.diff(np.r_[last_known_md, df.loc[target_rows, "MD"].to_numpy(dtype=float)])
+        frame["baseline_tvt_step"] = np.diff(np.r_[last_known_tvt, baseline_pred])
+    else:
+        frame["baseline_md_step"] = []
+        frame["baseline_tvt_step"] = []
+
+    if split == "train":
+        residual = pd.DataFrame(
             {
-                "split_id": features["split_id"],
                 "well": well,
-                "row": target_rows.astype(np.int32),
-                "id": features["id"],
-                "true_tvt": truth.astype("float32"),
-                "baseline_tvt": baseline_tvt.astype("float32"),
-                "residual_target": (truth - baseline_tvt).astype("float32"),
-                "baseline_name": BASELINE_NAME,
+                "split": split,
+                "row": target_rows,
+                "id": [f"{well}_{int(row)}" for row in target_rows],
+                "truth_tvt": df.loc[target_rows, "TVT"].to_numpy(dtype=float),
+                "baseline_tvt": baseline_pred,
             }
         )
-    return features, targets
+        residual["residual_target"] = residual["truth_tvt"] - residual["baseline_tvt"]
+    else:
+        residual = pd.DataFrame(columns=["well", "split", "row", "id", "truth_tvt", "baseline_tvt", "residual_target"])
+    return frame, residual
+
+
+def iter_wells(data_dir: Path, limit_wells: int | None) -> list[Path]:
+    files = sorted(data_dir.glob("*__horizontal_well.csv"))
+    if limit_wells is not None:
+        files = files[:limit_wells]
+    return files
+
+
+def reset_outputs() -> None:
+    FEATURE_DIR.mkdir(exist_ok=True)
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    REPORT_DIR.mkdir(exist_ok=True)
+    for path in [
+        FEATURE_DIR / "baseline_features_train.csv",
+        FEATURE_DIR / "baseline_features_test.csv",
+        FEATURE_DIR / "residual_targets.csv",
+        OUTPUT_DIR / "baseline_predictions_train_hidden.csv",
+        OUTPUT_DIR / "baseline_predictions_test.csv",
+        REPORT_DIR / "residual_target_report.md",
+    ]:
+        path.unlink(missing_ok=True)
+
+
+def write_residual_report(residual_df: pd.DataFrame) -> None:
+    abs_resid = residual_df["residual_target"].abs()
+    by_well = (
+        residual_df.groupby("well", as_index=False)
+        .agg(
+            rows=("id", "count"),
+            residual_rmse=("residual_target", lambda s: float(np.sqrt(np.mean(np.square(s.to_numpy(dtype=float)))))),
+            residual_mae=("residual_target", lambda s: float(np.mean(np.abs(s.to_numpy(dtype=float))))),
+            residual_bias=("residual_target", lambda s: float(np.mean(s.to_numpy(dtype=float)))),
+            target_span=("truth_tvt", lambda s: float(np.nanmax(s) - np.nanmin(s))),
+        )
+        .sort_values("residual_rmse", ascending=False)
+    )
+    report = [
+        "# Residual Target Report",
+        "",
+        f"- Target rows: {len(residual_df):,}",
+        f"- Residual RMSE around baseline: {float(np.sqrt(np.mean(np.square(residual_df['residual_target'].to_numpy(dtype=float))))):.4f}",
+        f"- Residual MAE around baseline: {float(np.mean(abs_resid.to_numpy(dtype=float))):.4f}",
+        f"- Residual bias around baseline: {float(np.mean(residual_df['residual_target'].to_numpy(dtype=float))):.4f}",
+        "",
+        "## Residual Quantiles",
+        "",
+        residual_df["residual_target"].quantile([0.01, 0.05, 0.25, 0.5, 0.75, 0.95, 0.99]).round(4).to_frame("residual_target").to_markdown(),
+        "",
+        "## Worst Wells By Residual RMSE",
+        "",
+        by_well.head(15).round(4).to_markdown(index=False),
+    ]
+    (REPORT_DIR / "residual_target_report.md").write_text("\n".join(report) + "\n", encoding="utf-8")
+
+
+def build_split(split: str, data_dir: Path, limit_wells: int | None) -> None:
+    feature_rows = []
+    residual_rows = []
+    prediction_rows = []
+    for path in iter_wells(data_dir, limit_wells):
+        well = path.name.split("__")[0]
+        df = pd.read_csv(path)
+        frame, residual = build_frame(df, split, well)
+        feature_rows.append(frame)
+        residual_rows.append(residual)
+        prediction_rows.append(frame[["id", "well", "row", "baseline_tvt"]].copy())
+
+    if feature_rows:
+        baseline_features = pd.concat(feature_rows, ignore_index=True)
+        baseline_features.to_csv(FEATURE_DIR / f"baseline_features_{split}.csv", index=False)
+
+    if residual_rows and split == "train":
+        residual_df = pd.concat(residual_rows, ignore_index=True)
+        residual_df.to_csv(FEATURE_DIR / "residual_targets.csv", index=False)
+        residual_df[["id", "baseline_tvt", "truth_tvt", "residual_target"]].to_csv(
+            OUTPUT_DIR / "baseline_predictions_train_hidden.csv", index=False
+        )
+
+    if prediction_rows and split == "test":
+        pd.concat(prediction_rows, ignore_index=True).to_csv(OUTPUT_DIR / "baseline_predictions_test.csv", index=False)
 
 
 def main() -> int:
-    ensure_part2_dirs()
-    data_version = assert_data_contract_ready()
-    data_hash = data_hash_short()
+    parser = argparse.ArgumentParser(description="Build baseline feature tables for residual modeling.")
+    parser.add_argument("--limit-wells", type=int, default=None, help="Limit the number of wells per split for smoke tests.")
+    args = parser.parse_args()
 
-    train_feature_parts = []
-    target_parts = []
-    for well in train_wells():
-        df = pd.read_csv(TRAIN_DIR / f"{well}__horizontal_well.csv")
-        target_rows = target_rows_from_tvt_input(df)
-        features, targets = build_rows(df, well, target_rows, truth_available=True)
-        train_feature_parts.append(features)
-        target_parts.append(targets)
+    reset_outputs()
 
-    train_features = pd.concat(train_feature_parts, ignore_index=True)
-    targets = pd.concat(target_parts, ignore_index=True)
-    train_features.to_parquet(BASELINE_TRAIN_PATH, index=False)
-    targets.to_parquet(TARGET_PATH, index=False)
+    # Touch sample submission so this script fails fast when the competition bundle is incomplete.
+    _ = load_sample_submission()
 
-    sample = pd.read_csv(DATA_DIR / "sample_submission.csv")
-    parsed = parse_submission_ids(sample)
-    test_feature_parts = []
-    for well, part in parsed.groupby("well", sort=True):
-        df = pd.read_csv(TEST_DIR / f"{well}__horizontal_well.csv")
-        target_rows = part["row"].to_numpy(dtype=int)
-        features, _ = build_rows(df, well, target_rows, truth_available=False)
-        test_feature_parts.append(features)
-    test_features = pd.concat(test_feature_parts, ignore_index=True)
-    test_features.to_parquet(BASELINE_TEST_PATH, index=False)
-
-    residual = targets["residual_target"].astype(float)
-    target_context = train_features[["id", "target_rows_count", "target_gr_missing_rate"]].copy()
-    residual_context = targets.merge(target_context, on="id", how="left", validate="one_to_one")
-    residual_context["abs_residual"] = residual_context["residual_target"].abs()
-    residual_context["target_length_bucket"] = pd.cut(
-        residual_context["target_rows_count"],
-        bins=[0, 500, 1500, 3000, 5000, np.inf],
-        labels=["0-500", "501-1500", "1501-3000", "3001-5000", "5001+"],
-        include_lowest=True,
-    )
-    residual_context["gr_missing_bucket"] = pd.cut(
-        residual_context["target_gr_missing_rate"],
-        bins=[-0.001, 0.0, 0.25, 0.50, 0.75, 1.0],
-        labels=["0", "0-25%", "25-50%", "50-75%", "75-100%"],
-        include_lowest=True,
-    )
-    residual_context["baseline_abs_error_bucket"] = pd.qcut(
-        residual_context["abs_residual"].rank(method="first"),
-        q=5,
-        labels=["q1_lowest", "q2", "q3", "q4", "q5_highest"],
-    )
-    by_well = (
-        targets.groupby("well")
-        .agg(rows=("row", "count"), residual_mean=("residual_target", "mean"), residual_std=("residual_target", "std"))
-        .reset_index()
-    )
-    lines = [
-        "# Residual Target Report",
-        "",
-        f"- Data hash: `{data_hash}`",
-        f"- Baseline anchor: `{BASELINE_NAME}`",
-        f"- Train rows: {len(targets):,}",
-        f"- Train wells: {targets['well'].nunique():,}",
-        f"- Test rows: {len(test_features):,}",
-        "",
-        "## Residual Distribution",
-        "",
-        pd.DataFrame(
-            [
-                {
-                    "mean": residual.mean(),
-                    "std": residual.std(),
-                    "p01": residual.quantile(0.01),
-                    "p05": residual.quantile(0.05),
-                    "p50": residual.quantile(0.50),
-                    "p95": residual.quantile(0.95),
-                    "p99": residual.quantile(0.99),
-                    "min": residual.min(),
-                    "max": residual.max(),
-                }
-            ]
-        ).round(4).to_markdown(index=False),
-        "",
-        "## Residual by Well",
-        "",
-        by_well.describe(include="all").fillna("").to_markdown(),
-        "",
-        "## Residual by Target Length",
-        "",
-        summarize_residual_group(residual_context, "target_length_bucket").round(4).to_markdown(index=False),
-        "",
-        "## Residual by Baseline Error Bucket",
-        "",
-        summarize_residual_group(residual_context, "baseline_abs_error_bucket").round(4).to_markdown(index=False),
-        "",
-        "## Residual by GR Missing Rate",
-        "",
-        summarize_residual_group(residual_context, "gr_missing_bucket").round(4).to_markdown(index=False),
-        "",
-        "## Outputs",
-        "",
-        f"- Baseline train features: `{BASELINE_TRAIN_PATH.relative_to(BASELINE_TRAIN_PATH.parents[1])}`",
-        f"- Baseline test features: `{BASELINE_TEST_PATH.relative_to(BASELINE_TEST_PATH.parents[1])}`",
-        f"- Residual targets: `{TARGET_PATH.relative_to(TARGET_PATH.parents[1])}`",
-        "",
-        "## Server Scaling",
-        "",
-        "Feature generation is full-row and deterministic. Model training can be scaled independently with `ROGII_PART2_TRAIN_ROWS_PER_WELL=0` on a server.",
-        "",
-    ]
-    REPORT_PATH.write_text("\n".join(lines))
-
-    print(f"Wrote {BASELINE_TRAIN_PATH}")
-    print(f"Wrote {BASELINE_TEST_PATH}")
-    print(f"Wrote {TARGET_PATH}")
-    print(f"Wrote {REPORT_PATH}")
-    print(f"train_rows={len(train_features)} test_rows={len(test_features)}")
+    build_split("train", resolve_train_dir(), args.limit_wells)
+    build_split("test", resolve_test_dir(), args.limit_wells)
+    if (FEATURE_DIR / "residual_targets.csv").exists():
+        write_residual_report(pd.read_csv(FEATURE_DIR / "residual_targets.csv"))
+    print(f"Wrote baseline features to {FEATURE_DIR}")
     return 0
 
 

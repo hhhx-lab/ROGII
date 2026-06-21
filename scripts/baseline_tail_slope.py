@@ -7,11 +7,10 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_squared_error
 
-from rogii_utils import assert_data_contract_ready, data_hash_short
+from data_paths import load_sample_submission, resolve_test_dir, resolve_train_dir
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT / "data" / "raw"
 SUBMISSION_DIR = ROOT / "submissions"
 REPORT_DIR = ROOT / "reports"
 SUBMISSION_PATH = SUBMISSION_DIR / "baseline_tail_slope_submission.csv"
@@ -59,11 +58,11 @@ def tail_slope_prediction(df: pd.DataFrame, rows: np.ndarray, tail_window: int) 
 def main() -> int:
     SUBMISSION_DIR.mkdir(exist_ok=True)
     REPORT_DIR.mkdir(exist_ok=True)
-    data_version = assert_data_contract_ready()
-    data_hash = data_hash_short(data_version)
 
-    sample = pd.read_csv(DATA_DIR / "sample_submission.csv")
+    sample = load_sample_submission()
     parsed = parse_submission_ids(sample)
+    test_dir = resolve_test_dir()
+    train_dir = resolve_train_dir()
 
     out = sample.copy()
     diagnostics = []
@@ -71,7 +70,7 @@ def main() -> int:
     local_pred = []
 
     for well, part in parsed.groupby("well", sort=True):
-        test_path = DATA_DIR / "test" / f"{well}__horizontal_well.csv"
+        test_path = test_dir / f"{well}__horizontal_well.csv"
         test = pd.read_csv(test_path)
         rows = part["row"].to_numpy()
         preds = tail_slope_prediction(test, rows, tail_window=200)
@@ -89,7 +88,7 @@ def main() -> int:
             }
         )
 
-        train_path = DATA_DIR / "train" / f"{well}__horizontal_well.csv"
+        train_path = train_dir / f"{well}__horizontal_well.csv"
         if train_path.exists():
             truth = pd.read_csv(train_path).loc[rows, "TVT"].to_numpy(dtype=float)
             local_truth.extend(truth.tolist())
@@ -103,8 +102,6 @@ def main() -> int:
         "## Method",
         "",
         "This baseline fills the missing evaluation interval per well by extrapolating `TVT_input` from the latest observed segment. It uses the median `dTVT/dMD` slope over the last 200 observed points, then writes predictions in Kaggle submission format.",
-        "",
-        f"- Data hash: `{data_hash}`",
         "",
         "## Output",
         "",

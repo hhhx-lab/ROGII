@@ -26,6 +26,7 @@ def main() -> int:
 
     run([str(kaggle), "competitions", "download", "-c", COMPETITION, "-p", str(DATA_DIR)])
     print(f"Downloaded competition bundle into: {DATA_DIR}")
+    print("If the download is a zip bundle, extract it so the repository has data/train and data/test.")
     return 0
 
 

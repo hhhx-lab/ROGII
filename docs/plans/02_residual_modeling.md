@@ -17,7 +17,7 @@ prediction = continuity_baseline + residual_model(features)
 ### 2.1 输入
 
 ```text
-data/raw/
+data/
 outputs/baseline_predictions_train_hidden.csv
 outputs/baseline_cv_by_well.csv
 outputs/cv_splits.csv
@@ -27,9 +27,9 @@ outputs/cv_splits.csv
 
 ```text
 features/
-|-- geometry_features_train.parquet
-|-- geometry_features_test.parquet
-`-- residual_targets.parquet
+|-- geometry_features_train.csv
+|-- geometry_features_test.csv
+`-- residual_targets.csv
 
 models/
 |-- residual_geometry_hgb.pkl
@@ -258,8 +258,8 @@ ANCC, ASTNU, ASTNL, EGFDU, EGFDL, BUDA
 输出：
 
 ```text
-features/baseline_features_train.parquet
-features/baseline_features_test.parquet
+features/baseline_features_train.csv
+features/baseline_features_test.csv
 ```
 
 ### 5.2 build_geometry_features.py
@@ -274,15 +274,16 @@ features/baseline_features_test.parquet
 输出：
 
 ```text
-features/geometry_features_train.parquet
-features/geometry_features_test.parquet
+features/geometry_features_train.csv
+features/geometry_features_test.csv
 ```
 
 实现细节：
 
 - 第一版可以用 CSV 输出，避免 `pyarrow` 依赖；
+- 目前默认先按 CSV 走，等真的需要再补 Parquet；
 - 如果使用 Parquet，必须把 `pyarrow` 固定进 `requirements.txt`；
-- 输出必须包含 `split_id/well/row/id` 作为 key；
+- 输出必须包含 `well/row/id` 作为 key；
 - 合并特征时必须检查 key 唯一性和行数一致。
 
 ### 5.3 train_residual_model.py
@@ -521,8 +522,8 @@ Part 2 完成必须满足：
 进入 Part 3 前必须有：
 
 ```text
-features/geometry_features_train.parquet
-features/geometry_features_test.parquet
+features/geometry_features_train.csv
+features/geometry_features_test.csv
 outputs/residual_geometry_oof.csv
 outputs/residual_geometry_cv_by_well.csv
 submissions/geometry_residual_submission.csv
