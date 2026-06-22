@@ -202,8 +202,8 @@ rsync -av archive/runs/<run_id>/ ./
 2. baseline generation
 3. baseline CV
 4. feature build
-5. SGD residual candidate
-6. optional XGBoost/tree residual candidate
+5. XGBoost full-row residual candidate
+6. SGD geometry residual control candidate, optional
 7. Part 3 diagnostics / route
 8. blend candidate generation
 9. candidate selection on common OOF coverage
@@ -214,8 +214,10 @@ rsync -av archive/runs/<run_id>/ ./
 
 注意：
 
-- 当前 residual correction 实际是 `StandardScaler + SGDRegressor`；
-- 当前脚本已支持 `--spec xgb`，优先 XGBoost，缺依赖时 fallback 到 sklearn HistGradientBoosting；
+- leaderboard 主线 residual candidate 是 `--spec xgb`；
+- SGD/geometry residual 仍保留为 control，不是正式冲榜默认主模型；
+- 正式 XGBoost run 必须使用 full-row training，也就是 `--max-rows-per-well 0`；
+- 正式 XGBoost run 建议加 `--require-xgboost`，避免环境缺依赖时静默 fallback 到 sklearn HistGradientBoosting；
 - 当前 Part 3 主要是 diagnostics / route；
 - 当前 alignment correction / gater 还不是已完成强能力；
 - postprocess 只有 OOF 不变差才应被接受。
@@ -229,8 +231,8 @@ rsync -av archive/runs/<run_id>/ ./
 .venv/bin/python scripts/evaluate_baseline_cv.py
 .venv/bin/python scripts/build_baseline_features.py
 .venv/bin/python scripts/build_geometry_features.py
-.venv/bin/python scripts/train_residual_model.py --spec geometry
-# optional: .venv/bin/python scripts/train_residual_model.py --spec xgb
+.venv/bin/python scripts/train_residual_model.py --spec xgb --max-rows-per-well 0 --require-xgboost --max-iter 500
+# optional control: .venv/bin/python scripts/train_residual_model.py --spec geometry --max-rows-per-well 0
 .venv/bin/python scripts/evaluate_model_cv.py
 .venv/bin/python scripts/evaluate_residual_multimask.py
 .venv/bin/python scripts/validate_part2_outputs.py
@@ -316,7 +318,7 @@ reports/part3_diagnostics_report.md
 
 当前状态说明：
 
-- geometry features 已用于当前 SGD residual；
+- geometry features 已用于当前 XGBoost residual primary 和 SGD residual control；
 - Part 3 diagnostics 可用于 route / blend；
 - alignment features 还应被视为下一步增强输入，不要当成已验证强 correction。
 
@@ -329,18 +331,18 @@ reports/part3_diagnostics_report.md
 
 ## 7. Step 3: Residual Candidates
 
-### 7.1 当前已实现: SGD Residual
+### 7.1 正式冲榜主线: XGBoost Full-Row Residual
 
 命令：
 
 ```bash
-.venv/bin/python scripts/train_residual_model.py --spec geometry
+.venv/bin/python scripts/train_residual_model.py --spec xgb --max-rows-per-well 0 --require-xgboost --max-iter 500
 ```
 
-当前模型：
+当前正式主模型：
 
 ```text
-StandardScaler + SGDRegressor
+XGBoost XGBRegressor
 ```
 
 目标：
@@ -352,57 +354,6 @@ residual_target = truth_tvt - baseline_tvt
 输出：
 
 ```text
-outputs/residual_geometry_oof.csv
-outputs/residual_geometry_cv_by_well.csv
-outputs/residual_geometry_test_predictions.csv
-submissions/geometry_residual_submission.csv
-reports/residual_geometry_cv_report.md
-```
-
-验证：
-
-- OOF RMSE 是否优于 baseline；
-- degraded wells 是否可控；
-- worst degradation 是否可接受；
-- per-well report 是否存在。
-
-失败时回退：
-
-- 回退 baseline；
-- 不进入 blend；
-- 检查特征缺失或数据版本混用。
-
-### 7.2 当前已实现: XGBoost/tree Residual 脚本支持
-
-脚本入口已经实现：
-
-```bash
-.venv/bin/python scripts/train_residual_model.py --spec xgb
-```
-
-当前本机 `.venv` 没有 `xgboost`，所以这条分支会自动 fallback 到：
-
-```text
-sklearn.ensemble.HistGradientBoostingRegressor
-```
-
-如果环境能 import `xgboost`，同一入口会使用：
-
-```text
-xgboost.XGBRegressor
-```
-
-目标仍然是：
-
-```text
-residual_target = truth_tvt - baseline_tvt
-```
-
-它不是替代整体框架，而是替换/增强 residual model。
-
-运行后输出：
-
-```text
 outputs/residual_xgb_oof.csv
 outputs/residual_xgb_cv_by_well.csv
 outputs/residual_xgb_test_predictions.csv
@@ -412,19 +363,53 @@ models/residual_xgb_model.pkl
 models/residual_xgb_config.json
 ```
 
-验证方式：
+验证：
 
-- 与 SGD residual 使用同一套 GroupKFold；
-- 与 baseline、SGD 同表比较；
-- 不只看 public leaderboard；
-- 检查 per-well degraded 和 worst tail。
+- OOF RMSE 是否优于 baseline；
+- degraded wells 是否可控；
+- worst degradation 是否可接受；
+- per-well report 是否存在。
+- report/config 中 `fit_fraction` 应接近 `1.0`；
+- `max_rows_per_well` 应为 `0`；
+- `model_backend` 应为 `xgboost`。
 
 失败时回退：
 
-- XGBoost 不如 SGD 就不进入最终候选；
-- 只在特定 route 改善时，作为 route-specific 或 aggressive candidate。
+- 回退 baseline；
+- 不进入 blend；
+- 检查特征缺失或数据版本混用。
 
-### 7.3 下一步计划: Tree Residual 对照
+### 7.2 保留 control: SGD Geometry Residual
+
+SGD 不是当前冲榜主线，但仍保留作为轻量 control：
+
+```bash
+.venv/bin/python scripts/train_residual_model.py --spec geometry --max-rows-per-well 0
+```
+
+模型：
+
+```text
+StandardScaler + SGDRegressor
+```
+
+用途：
+
+- 给 XGBoost 提供 sanity check；
+- 检查 residual target 和 feature pipeline 是否正常；
+- 当 XGBoost 结果异常时帮助定位问题。
+
+### 7.3 XGBoost fallback 只用于实验
+
+如果不加 `--require-xgboost`，脚本仍允许 fallback 到：
+
+```text
+sklearn.ensemble.HistGradientBoostingRegressor
+```
+
+这只能作为环境不完整时的实验，不应作为正式 leaderboard run。
+
+### 7.4 下一步计划: Tree Residual 对照
 
 部分已实现。
 
@@ -612,7 +597,7 @@ then export final submission
 
 - 如果没有 CV summary，不能自信选择；
 - 如果最优 candidate 风险过高，回退次优稳定候选；
-- 如果所有 candidate 不完整，回退 baseline 或当前 SGD residual。
+- 如果所有 candidate 不完整，回退 baseline 或已验证的 SGD control。
 
 ## 12. Step 8: Postprocess With Guard
 
@@ -699,9 +684,9 @@ tvt numeric
 3. baseline CV
 4. feature build
 5. residual candidates:
-   - SGD residual
-   - XGBoost residual if xgboost is available
-   - HistGradientBoosting residual fallback
+   - XGBoost full-row residual primary
+   - SGD residual control
+   - HistGradientBoosting residual fallback only for experiments
    - LightGBM residual if allowed
    - gated residual
    - GR/typewell alignment enhanced residual
@@ -731,8 +716,8 @@ selected = lowest OOF RMSE among valid_candidates
 可以说：
 
 - 当前系统已经是 `baseline + residual correction`；
-- 当前 residual 是 SGD pipeline；
-- 当前 `scripts/train_residual_model.py --spec xgb` 已支持 XGBoost/tree residual，xgboost 不存在时 fallback 到 HistGradientBoosting；
+- 当前 leaderboard primary residual 是 `scripts/train_residual_model.py --spec xgb --max-rows-per-well 0 --require-xgboost`；
+- SGD pipeline 仍保留为 control，不是正式冲榜默认主模型；
 - 当前 `scripts/select_submission_candidate.py` 已实现候选选择，并按共同 OOF 覆盖比较；
 - 当前 Part 3 能提供 route / diagnostics；
 - 当前 Part 4 能生成多个候选并按 OOF 自动选；

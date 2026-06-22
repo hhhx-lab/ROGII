@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -37,6 +38,45 @@ REQUIRED_REPORTS = [
 ]
 REQUIRED_SUBMISSIONS = [SUBMISSION_DIR / "geometry_residual_submission.csv"]
 
+PRIMARY_ARTIFACTS = {
+    "geometry": {
+        "models": REQUIRED_MODELS,
+        "outputs": REQUIRED_OUTPUTS,
+        "reports": REQUIRED_REPORTS,
+        "submissions": REQUIRED_SUBMISSIONS,
+        "config_candidates": [
+            MODEL_DIR / "residual_geometry_hgb_config.json",
+            MODEL_DIR / "residual_geometry_config.json",
+        ],
+        "submission_path": SUBMISSION_DIR / "geometry_residual_submission.csv",
+        "oof_path": OUTPUT_DIR / "residual_geometry_oof.csv",
+        "cv_path": OUTPUT_DIR / "residual_geometry_cv_by_well.csv",
+        "label": "geometry residual",
+    },
+    "xgb": {
+        "models": [
+            MODEL_DIR / "residual_xgb_model.pkl",
+            MODEL_DIR / "residual_xgb_config.json",
+            MODEL_DIR / "residual_xgb_feature_list.txt",
+        ],
+        "outputs": [
+            OUTPUT_DIR / "residual_xgb_oof.csv",
+            OUTPUT_DIR / "residual_xgb_cv_by_well.csv",
+            OUTPUT_DIR / "residual_xgb_test_predictions.csv",
+        ],
+        "reports": [
+            REPORT_DIR / "residual_target_report.md",
+            REPORT_DIR / "residual_xgb_cv_report.md",
+        ],
+        "submissions": [SUBMISSION_DIR / "xgb_residual_submission.csv"],
+        "config_candidates": [MODEL_DIR / "residual_xgb_config.json"],
+        "submission_path": SUBMISSION_DIR / "xgb_residual_submission.csv",
+        "oof_path": OUTPUT_DIR / "residual_xgb_oof.csv",
+        "cv_path": OUTPUT_DIR / "residual_xgb_cv_by_well.csv",
+        "label": "xgb/tree residual",
+    },
+}
+
 OPTIONAL_XGB_ARTIFACTS = [
     OUTPUT_DIR / "residual_xgb_oof.csv",
     OUTPUT_DIR / "residual_xgb_cv_by_well.csv",
@@ -45,6 +85,7 @@ OPTIONAL_XGB_ARTIFACTS = [
     SUBMISSION_DIR / "xgb_residual_submission.csv",
     MODEL_DIR / "residual_xgb_model.pkl",
     MODEL_DIR / "residual_xgb_config.json",
+    MODEL_DIR / "residual_xgb_feature_list.txt",
 ]
 
 
@@ -112,11 +153,7 @@ def validate_feature_alignment(checks: list[dict[str, object]]) -> None:
     )
 
 
-def validate_model_config(checks: list[dict[str, object]]) -> None:
-    config_candidates = [
-        MODEL_DIR / "residual_geometry_hgb_config.json",
-        MODEL_DIR / "residual_geometry_config.json",
-    ]
+def validate_model_config(checks: list[dict[str, object]], config_candidates: list[Path]) -> None:
     config_path = next((path for path in config_candidates if path.exists()), None)
     if config_path is None:
         return
@@ -201,33 +238,39 @@ def validate_optional_xgb(checks: list[dict[str, object]]) -> None:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Validate Part 2 residual artifacts.")
+    parser.add_argument("--primary-spec", choices=sorted(PRIMARY_ARTIFACTS), default="geometry")
+    args = parser.parse_args()
+
     assert_data_contract_ready()
     checks: list[dict[str, object]] = []
+    artifacts = PRIMARY_ARTIFACTS[args.primary_spec]
 
     add_exists_checks(checks, REQUIRED_FEATURES, "required feature")
-    add_exists_checks(checks, REQUIRED_MODELS, "required model artifact")
-    add_exists_checks(checks, REQUIRED_OUTPUTS, "required output")
-    add_exists_checks(checks, REQUIRED_REPORTS, "required report")
-    add_exists_checks(checks, REQUIRED_SUBMISSIONS, "required submission")
+    add_exists_checks(checks, artifacts["models"], f"required {args.primary_spec} model artifact")
+    add_exists_checks(checks, artifacts["outputs"], f"required {args.primary_spec} output")
+    add_exists_checks(checks, artifacts["reports"], f"required {args.primary_spec} report")
+    add_exists_checks(checks, artifacts["submissions"], f"required {args.primary_spec} submission")
 
     validate_feature_alignment(checks)
-    validate_model_config(checks)
-    validate_submission_file(checks, SUBMISSION_DIR / "geometry_residual_submission.csv", "geometry residual")
-    validate_oof_coverage(checks, OUTPUT_DIR / "residual_geometry_oof.csv", "geometry residual")
+    validate_model_config(checks, artifacts["config_candidates"])
+    validate_submission_file(checks, artifacts["submission_path"], artifacts["label"])
+    validate_oof_coverage(checks, artifacts["oof_path"], artifacts["label"])
 
-    if (OUTPUT_DIR / "residual_geometry_cv_by_well.csv").exists():
-        cv = pd.read_csv(OUTPUT_DIR / "residual_geometry_cv_by_well.csv")
+    if artifacts["cv_path"].exists():
+        cv = pd.read_csv(artifacts["cv_path"])
         checks.append(
             {
-                "check": "per-well residual CV is finite",
+                "check": f"per-well {args.primary_spec} residual CV is finite",
                 "status": pass_fail("rmse" in cv.columns and np.isfinite(cv["rmse"].to_numpy(dtype=float)).all()),
                 "evidence": f"wells={cv['well'].nunique() if 'well' in cv else 'unknown'}",
             }
         )
 
-    validate_optional_xgb(checks)
+    if args.primary_spec != "xgb":
+        validate_optional_xgb(checks)
 
-    report_texts = [path.read_text(encoding="utf-8") for path in REQUIRED_REPORTS if path.exists()]
+    report_texts = [path.read_text(encoding="utf-8") for path in artifacts["reports"] if path.exists()]
     joined_reports = "\n".join(report_texts)
     checks.append(
         {
@@ -241,6 +284,7 @@ def main() -> int:
     lines = [
         "# Part 2 Completion Audit",
         "",
+        f"- Primary spec: `{args.primary_spec}`",
         f"- Checks: {len(checks_df)}",
         f"- Failures: {len(failed)}",
         "",

@@ -57,6 +57,29 @@ def run_step(name: str, command: list[str], env: dict[str, str], log_path: Path,
 
 def build_steps(args: argparse.Namespace) -> list[tuple[str, list[str], dict[str, str]]]:
     py = sys.executable
+    residual_train_cmd = [
+        py,
+        "scripts/train_residual_model.py",
+        "--spec",
+        args.residual_spec,
+        "--max-rows-per-well",
+        str(args.train_rows_per_well),
+        "--max-iter",
+        str(args.max_iter),
+        "--learning-rate",
+        str(args.learning_rate),
+        "--max-leaf-nodes",
+        str(args.max_leaf_nodes),
+        "--min-samples-leaf",
+        str(args.min_samples_leaf),
+        "--l2-regularization",
+        str(args.l2),
+        "--min-fit-fraction",
+        str(args.min_fit_fraction),
+    ]
+    if args.require_xgboost:
+        residual_train_cmd.append("--require-xgboost")
+
     steps: list[tuple[str, list[str], dict[str, str]]] = [
         ("preflight", [py, "scripts/server_part2_preflight.py"], {}),
         ("data_contract", [py, "scripts/check_data_contract.py"], {}),
@@ -72,20 +95,14 @@ def build_steps(args: argparse.Namespace) -> list[tuple[str, list[str], dict[str
             ("part2_geometry_features", [py, "scripts/build_geometry_features.py"], {}),
             (
                 "part2_full_residual_training",
-                [py, "scripts/train_residual_model.py"],
-                {
-                    "ROGII_PART2_TRAIN_ROWS_PER_WELL": str(args.train_rows_per_well),
-                    "ROGII_PART2_MAX_ITER": str(args.max_iter),
-                    "ROGII_PART2_MAX_LEAF_NODES": str(args.max_leaf_nodes),
-                    "ROGII_PART2_MIN_SAMPLES_LEAF": str(args.min_samples_leaf),
-                    "ROGII_PART2_L2": str(args.l2),
-                    "ROGII_PART2_LEARNING_RATE": str(args.learning_rate),
-                },
+                residual_train_cmd,
+                {},
             ),
-            ("part2_cv_reports", [py, "scripts/evaluate_model_cv.py"], {}),
         ]
     )
-    if not args.skip_residual_multimask:
+    if args.residual_spec == "geometry":
+        steps.append(("part2_cv_reports", [py, "scripts/evaluate_model_cv.py"], {}))
+    if args.residual_spec == "geometry" and not args.skip_residual_multimask:
         steps.append(
             (
                 "part2_full_residual_multimask",
@@ -96,7 +113,7 @@ def build_steps(args: argparse.Namespace) -> list[tuple[str, list[str], dict[str
                 },
             )
     )
-    steps.append(("part2_completion_audit", [py, "scripts/validate_part2_outputs.py"], {}))
+    steps.append(("part2_completion_audit", [py, "scripts/validate_part2_outputs.py", "--primary-spec", args.residual_spec], {}))
     return steps
 
 
@@ -143,12 +160,16 @@ def write_summary(results: list[dict[str, object]], started_at: str, finished_at
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the full Part 2 server pipeline from data checks to package creation.")
+    parser.add_argument("--residual-spec", choices=["geometry", "xgb"], default="xgb", help="Leaderboard full run defaults to the XGBoost/tree residual candidate.")
     parser.add_argument("--train-rows-per-well", type=int, default=0, help="0 means use all rows per well for residual training.")
+    parser.add_argument("--min-fit-fraction", type=float, default=0.95)
     parser.add_argument("--max-iter", type=int, default=500, help="HistGradientBoosting max_iter for full residual training.")
     parser.add_argument("--max-leaf-nodes", type=int, default=31)
     parser.add_argument("--min-samples-leaf", type=int, default=50)
     parser.add_argument("--l2", type=float, default=0.05)
     parser.add_argument("--learning-rate", type=float, default=0.05)
+    parser.add_argument("--require-xgboost", action="store_true", default=True, help="Fail if xgboost is unavailable instead of using the fallback backend.")
+    parser.add_argument("--allow-xgboost-fallback", action="store_false", dest="require_xgboost", help="Allow sklearn HistGradientBoosting fallback for experiments.")
     parser.add_argument("--multimask-train-rows-per-well", type=int, default=0, help="0 means use all rows per well for residual multi-mask validation.")
     parser.add_argument("--multimask-max-iter", type=int, default=500)
     parser.add_argument("--skip-part1-baseline", action="store_true", help="Skip evaluate_baseline_cv.py if required Part 1 outputs already exist.")

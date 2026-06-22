@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import pickle
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -40,7 +40,7 @@ class ModelSpec:
     output_report: str
     output_submission: str
     model_dir_name: str
-    max_rows_per_well: int = 60
+    max_rows_per_well: int = 0
     model_family: str = "sgd"
     output_model: str | None = None
     output_config: str | None = None
@@ -229,7 +229,6 @@ SPECS: dict[str, ModelSpec] = {
         output_report="residual_typewell_cv_report.md",
         output_submission="typewell_residual_submission.csv",
         model_dir_name="residual_typewell_hgb",
-        max_rows_per_well=40,
     ),
 }
 
@@ -243,7 +242,7 @@ SPECS["xgb"] = ModelSpec(
     output_report="residual_xgb_cv_report.md",
     output_submission="xgb_residual_submission.csv",
     model_dir_name="residual_xgb",
-    max_rows_per_well=60,
+    max_rows_per_well=0,
     model_family="tree",
     output_model="residual_xgb_model.pkl",
     output_config="residual_xgb_config.json",
@@ -453,6 +452,7 @@ def train_oof(train_df: pd.DataFrame, fit_df: pd.DataFrame, cols: list[str], par
 
 
 def build_report(spec: ModelSpec, metrics: dict[str, float], fold_df: pd.DataFrame, per_well: pd.DataFrame, feature_importance: pd.DataFrame, train_rows: int, fit_rows: int) -> str:
+    fit_fraction = float(fit_rows / train_rows) if train_rows else 0.0
     lines = [
         f"# Residual {spec.name.capitalize()} CV Report",
         "",
@@ -460,6 +460,8 @@ def build_report(spec: ModelSpec, metrics: dict[str, float], fold_df: pd.DataFra
         f"- CV backend: `{metrics.get('cv_backend', metrics.get('backend', 'unknown'))}`",
         f"- Training rows before thinning: {train_rows:,}",
         f"- Training rows after thinning: {fit_rows:,}",
+        f"- Fit fraction: {fit_fraction:.6f}",
+        f"- Max rows per well: {spec.max_rows_per_well}",
         f"- OOF RMSE: {metrics['rmse']:.4f}",
         f"- OOF MAE: {metrics['mae']:.4f}",
         f"- OOF bias: {metrics['bias']:.4f}",
@@ -483,7 +485,17 @@ def build_report(spec: ModelSpec, metrics: dict[str, float], fold_df: pd.DataFra
     return "\n".join(lines) + "\n"
 
 
-def run_spec(spec: ModelSpec, alpha: float, max_iter: int, tol: float, n_splits: int) -> None:
+def run_spec(
+    spec: ModelSpec,
+    alpha: float,
+    max_iter: int,
+    tol: float,
+    n_splits: int,
+    min_fit_fraction: float,
+    tree_backend: str,
+    require_xgboost: bool,
+    tree_params: dict[str, object],
+) -> None:
     MODEL_DIR.mkdir(exist_ok=True)
     OUTPUT_DIR.mkdir(exist_ok=True)
     REPORT_DIR.mkdir(exist_ok=True)
@@ -505,7 +517,22 @@ def run_spec(spec: ModelSpec, alpha: float, max_iter: int, tol: float, n_splits:
     train_df = train_df.sort_values(["well", "row"], kind="mergesort").reset_index(drop=True)
 
     fit_df = thin_by_well(train_df, spec.max_rows_per_well)
-    model_backend = resolve_tree_backend() if spec.model_family == "tree" else "sgd"
+    fit_fraction = float(len(fit_df) / len(train_df)) if len(train_df) else 0.0
+    if fit_fraction < min_fit_fraction:
+        raise RuntimeError(
+            f"[{spec.name}] fit fraction {fit_fraction:.6f} is below required {min_fit_fraction:.6f}. "
+            f"train_rows={len(train_df)} fit_rows={len(fit_df)} max_rows_per_well={spec.max_rows_per_well}. "
+            "Use --max-rows-per-well 0 for full training, or lower --min-fit-fraction only for an explicit sampled experiment."
+        )
+    if spec.model_family == "tree":
+        model_backend = resolve_tree_backend() if tree_backend == "auto" else tree_backend
+        if require_xgboost and model_backend != "xgboost":
+            raise RuntimeError(
+                f"[{spec.name}] --require-xgboost was set, but resolved backend is {model_backend}. "
+                "Install xgboost in the run environment or remove --require-xgboost for a fallback experiment."
+            )
+    else:
+        model_backend = "sgd"
     params = {
         "model_family": spec.model_family,
         "model_backend": model_backend,
@@ -513,6 +540,7 @@ def run_spec(spec: ModelSpec, alpha: float, max_iter: int, tol: float, n_splits:
         "max_iter": max_iter,
         "tol": tol,
         "n_splits": n_splits,
+        **tree_params,
     }
     oof, metrics, fold_df = train_oof(train_df, fit_df, spec.feature_cols, params)
     train_df["oof_residual_pred"] = oof
@@ -522,6 +550,11 @@ def run_spec(spec: ModelSpec, alpha: float, max_iter: int, tol: float, n_splits:
     model = fit_model(fit_df[spec.feature_cols], fit_df["residual_target"], params)
     feature_importance = compute_feature_importance(model, spec.feature_cols)
     actual_backend = str(getattr(model, "_rogii_backend", model_backend))
+    if require_xgboost and spec.model_family == "tree" and actual_backend != "xgboost":
+        raise RuntimeError(
+            f"[{spec.name}] --require-xgboost was set, but actual fitted backend is {actual_backend}. "
+            "The run is not a true XGBoost training run."
+        )
     metrics["cv_backend"] = metrics.get("backend", model_backend)
     metrics["backend"] = actual_backend
     params["requested_model_backend"] = model_backend
@@ -543,6 +576,7 @@ def run_spec(spec: ModelSpec, alpha: float, max_iter: int, tol: float, n_splits:
                 "metrics": metrics,
                 "train_rows": int(len(train_df)),
                 "fit_rows": int(len(fit_df)),
+                "fit_fraction": fit_fraction,
                 "n_splits": int(n_splits),
                 "max_rows_per_well": int(spec.max_rows_per_well),
             },
@@ -599,16 +633,64 @@ def run_spec(spec: ModelSpec, alpha: float, max_iter: int, tol: float, n_splits:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Train residual model families.")
-    parser.add_argument("--spec", choices=sorted(SPECS.keys()) + ["all"], default="all")
+    parser.add_argument("--spec", choices=sorted(SPECS.keys()) + ["all"], default="xgb")
     parser.add_argument("--alpha", type=float, default=0.0005)
     parser.add_argument("--max-iter", type=int, default=30)
     parser.add_argument("--tol", type=float, default=1e-3)
     parser.add_argument("--n-splits", type=int, default=3)
+    parser.add_argument("--tree-backend", choices=["auto", "xgboost", "hist_gradient_boosting"], default="auto")
+    parser.add_argument("--require-xgboost", action="store_true", help="Fail instead of falling back when the selected tree backend is not XGBoost.")
+    parser.add_argument("--learning-rate", type=float, default=0.05)
+    parser.add_argument("--max-depth", type=int, default=4)
+    parser.add_argument("--subsample", type=float, default=0.9)
+    parser.add_argument("--colsample-bytree", type=float, default=0.9)
+    parser.add_argument("--reg-lambda", type=float, default=1.0)
+    parser.add_argument("--n-jobs", type=int, default=1)
+    parser.add_argument("--tree-method", default="hist")
+    parser.add_argument("--max-leaf-nodes", type=int, default=31)
+    parser.add_argument("--min-samples-leaf", type=int, default=20)
+    parser.add_argument("--l2-regularization", type=float, default=0.0)
+    parser.add_argument(
+        "--max-rows-per-well",
+        type=int,
+        default=None,
+        help="Override per-well training cap. Use 0 for full-row training. Defaults are full-row for leaderboard candidates.",
+    )
+    parser.add_argument(
+        "--min-fit-fraction",
+        type=float,
+        default=0.95,
+        help="Fail before fitting if sampled training uses less than this fraction of train rows.",
+    )
     args = parser.parse_args()
 
+    tree_params = {
+        "learning_rate": args.learning_rate,
+        "max_depth": args.max_depth,
+        "subsample": args.subsample,
+        "colsample_bytree": args.colsample_bytree,
+        "reg_lambda": args.reg_lambda,
+        "n_jobs": args.n_jobs,
+        "tree_method": args.tree_method,
+        "max_leaf_nodes": args.max_leaf_nodes,
+        "min_samples_leaf": args.min_samples_leaf,
+        "l2_regularization": args.l2_regularization,
+    }
     specs = SPECS.values() if args.spec == "all" else [SPECS[args.spec]]
     for spec in specs:
-        run_spec(spec, args.alpha, args.max_iter, args.tol, args.n_splits)
+        if args.max_rows_per_well is not None:
+            spec = replace(spec, max_rows_per_well=args.max_rows_per_well)
+        run_spec(
+            spec,
+            args.alpha,
+            args.max_iter,
+            args.tol,
+            args.n_splits,
+            args.min_fit_fraction,
+            args.tree_backend,
+            args.require_xgboost,
+            tree_params,
+        )
     return 0
 
 

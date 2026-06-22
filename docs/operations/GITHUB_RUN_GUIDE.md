@@ -12,8 +12,8 @@
 
 ```text
 baseline
-  -> SGD residual
-  -> optional XGBoost/tree residual
+  -> XGBoost full-row residual primary
+  -> optional SGD residual control
   -> Part 3 diagnostics / route
   -> blend candidates
   -> select_submission_candidate.py
@@ -93,7 +93,8 @@ rsync -av archive/runs/<run_id>/ ./
 ## 运行时记住三点
 
 - 原始数据优先放 `data/train` / `data/test`，旧布局 `data/raw/train` / `data/raw/test` 也兼容。
-- 当前 SGD residual 是主控制模型；`--spec xgb` 已支持 XGBoost/tree residual，缺 `xgboost` 时 fallback 到 HistGradientBoosting。
+- 正式冲榜主模型是 `--spec xgb --max-rows-per-well 0 --require-xgboost`；SGD residual 只作为 control。
+- 不要用缺 `xgboost` 时的 HistGradientBoosting fallback 当正式 leaderboard run。
 - 最终提交必须按共同 OOF 覆盖选择；postprocess 只有满足 `--min-improvement` guard 时才允许使用。
 
 当前 smoke test：

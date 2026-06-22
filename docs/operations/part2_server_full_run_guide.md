@@ -292,7 +292,7 @@ sed -n '1,220p' reports/server_part2_preflight_report.md
 7. 生成 geometry 特征
 8. 训练 residual
 9. 跑 residual CV
-10. 跑 residual 多 mask
+10. 跑 residual 多 mask（geometry control 才需要）
 11. 做 Part 2 最终审计
 12. 打包服务器结果
 
@@ -306,14 +306,17 @@ sed -n '1,220p' reports/server_part2_preflight_report.md
 .venv/bin/python scripts/run_part2_full_server.py
 ```
 
-这个命令默认就是 full-row 配置，也就是：
+这个命令默认就是 full-row 的 XGBoost 主线配置，也就是：
 
 ```text
-ROGII_PART2_TRAIN_ROWS_PER_WELL=0
-ROGII_PART2_MAX_ITER=500
-ROGII_PART2_MULTIMASK_TRAIN_ROWS_PER_WELL=0
-ROGII_PART2_MULTIMASK_MAX_ITER=500
+--residual-spec xgb
+--train-rows-per-well 0
+--min-fit-fraction 0.95
+--max-iter 500
+--require-xgboost
 ```
+
+并且训练入口会要求 `xgboost` 可用；如果环境里没有 `xgboost`，会直接失败，而不是静默回退到 sklearn fallback。
 
 如果你担心 SSH 断开，也可以用：
 
