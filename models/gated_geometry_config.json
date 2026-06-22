@@ -1,0 +1,53 @@
+{
+  "model_name": "gated_geometry",
+  "model_family": "gater",
+  "model_backend": "per_well_alpha_grid",
+  "data_hash": "unknown",
+  "alpha_grid": [
+    0.0,
+    0.25,
+    0.5,
+    0.75,
+    1.0
+  ],
+  "metrics": {
+    "rmse": 13.670479446104268,
+    "mae": 9.647564206372813,
+    "median_abs_error": 6.906211160736348,
+    "p90_abs_error": 21.325988359957044,
+    "p95_abs_error": 27.834802604892683,
+    "p99_abs_error": 45.187980206732945,
+    "max_abs_error": 109.89297183213966,
+    "bias": -0.3198938509563368
+  },
+  "baseline_metrics": {
+    "rmse": 119.9332960625617,
+    "mae": 53.68043854503403,
+    "median_abs_error": 26.63000000095235,
+    "p90_abs_error": 130.610000002796,
+    "p95_abs_error": 182.7799999906918,
+    "p99_abs_error": 318.84119999622834,
+    "max_abs_error": 2552.660000001604,
+    "bias": 4.989323142876782
+  },
+  "geometry_metrics": {
+    "rmse": 16.308060374154575,
+    "mae": 11.517928435352504,
+    "median_abs_error": 8.321669589999146,
+    "p90_abs_error": 25.179322707728716,
+    "p95_abs_error": 32.8121354270017,
+    "p99_abs_error": 55.05605613791518,
+    "max_abs_error": 109.89297183213966,
+    "bias": -0.11709935299205099
+  },
+  "improved_wells": 670,
+  "degraded_wells": 0,
+  "mean_alpha": 0.7829883570504528,
+  "train_rows": 3783989,
+  "fit_rows": 3783989,
+  "fit_fraction": 1.0,
+  "feature_columns": [
+    "oof_residual_pred",
+    "alpha"
+  ]
+}

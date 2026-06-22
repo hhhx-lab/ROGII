@@ -27,6 +27,28 @@ SUBMISSION_DIR = ROOT / "submissions"
 
 BASELINE_META_COLS = ["well", "split", "row", "id"]
 RESIDUAL_META_COLS = ["well", "split", "row", "id", "truth_tvt", "baseline_tvt", "residual_target"]
+LEFTOVER_META_COLS = [
+    "well",
+    "split",
+    "row",
+    "id",
+    "truth_tvt",
+    "baseline_tvt",
+    "residual_target",
+    "geometry_oof_residual",
+    "leftover_target",
+    "abs_geometry_residual",
+]
+PART3_WELL_COLS = [
+    "gr_quality_score",
+    "typewell_quality_score",
+    "risk_score",
+    "baseline_confidence",
+    "route_suggestion",
+]
+DIAGNOSTICS_PATH = OUTPUT_DIR / "part3_diagnostics.csv"
+GEOMETRY_OOF_PATH = OUTPUT_DIR / "residual_geometry_oof.csv"
+GEOMETRY_TEST_PATH = OUTPUT_DIR / "residual_geometry_test_predictions.csv"
 
 
 @dataclass(frozen=True)
@@ -45,6 +67,10 @@ class ModelSpec:
     output_model: str | None = None
     output_config: str | None = None
     output_feature_list: str | None = None
+    target_csv: str = "residual_targets.csv"
+    target_col: str = "residual_target"
+    stack_geometry_correction: bool = False
+    merge_well_diagnostics: bool = False
 
 
 SPECS: dict[str, ModelSpec] = {
@@ -249,6 +275,41 @@ SPECS["xgb"] = ModelSpec(
     output_feature_list="residual_xgb_feature_list.txt",
 )
 
+XGB_LEFTOVER_EXTRA_COLS = [
+    "abs_geometry_residual",
+    "alignment_confidence",
+    "alignment_support_fraction",
+    "alignment_enabled_flag",
+    "gr_quality_score",
+    "typewell_quality_score",
+    "risk_score",
+]
+
+SPECS["xgb_leftover"] = ModelSpec(
+    name="xgb_leftover",
+    feature_files=[
+        "baseline_features_{split}.csv",
+        "geometry_features_{split}.csv",
+        "alignment_features_{split}.csv",
+    ],
+    feature_cols=SPECS["geometry"].feature_cols + XGB_LEFTOVER_EXTRA_COLS,
+    output_oof="residual_xgb_leftover_oof.csv",
+    output_cv="residual_xgb_leftover_cv_by_well.csv",
+    output_test="residual_xgb_leftover_test_predictions.csv",
+    output_report="residual_xgb_leftover_cv_report.md",
+    output_submission="xgb_leftover_submission.csv",
+    model_dir_name="residual_xgb_leftover",
+    max_rows_per_well=0,
+    model_family="tree",
+    output_model="residual_xgb_leftover_model.pkl",
+    output_config="residual_xgb_leftover_config.json",
+    output_feature_list="residual_xgb_leftover_feature_list.txt",
+    target_csv="leftover_targets.csv",
+    target_col="leftover_target",
+    stack_geometry_correction=True,
+    merge_well_diagnostics=True,
+)
+
 
 def load_csv(path: Path, usecols: list[str] | None = None, dtype: dict[str, str] | None = None) -> pd.DataFrame:
     if not path.exists():
@@ -287,6 +348,79 @@ def load_feature_frame(path: Path, desired_cols: list[str], include_baseline_tvt
     if include_baseline_tvt and "baseline_tvt" in header and "baseline_tvt" not in keep:
         keep.append("baseline_tvt")
     return load_csv(path, usecols=keep)
+
+
+def load_part3_well_features() -> pd.DataFrame:
+    if not DIAGNOSTICS_PATH.exists():
+        return pd.DataFrame(columns=["well", *PART3_WELL_COLS])
+    frame = pd.read_csv(DIAGNOSTICS_PATH, dtype={"well": "string"})
+    if "split" in frame.columns:
+        frame = frame[frame["split"].fillna("train").ne("test")].copy()
+    keep = ["well"] + [col for col in PART3_WELL_COLS if col in frame.columns]
+    return frame[keep].drop_duplicates("well", keep="last")
+
+
+def merge_well_features(frame: pd.DataFrame, well_features: pd.DataFrame) -> pd.DataFrame:
+    if well_features.empty or "well" not in well_features.columns:
+        return frame
+    extra = [col for col in well_features.columns if col not in frame.columns or col == "well"]
+    return frame.merge(well_features[extra], on="well", how="left", validate="many_to_one")
+
+
+def compute_sample_weights(df: pd.DataFrame) -> np.ndarray:
+    counts = df.groupby("well", sort=False).size()
+    weights = df["well"].map(lambda well: 1.0 / np.sqrt(float(counts[well]))).to_numpy(dtype=float)
+    if not np.isfinite(weights).all() or weights.sum() <= 0:
+        return np.ones(len(df), dtype=float)
+    return weights * (len(weights) / weights.sum())
+
+
+def target_meta_cols(spec: ModelSpec) -> list[str]:
+    if spec.target_csv == "leftover_targets.csv":
+        return [col for col in LEFTOVER_META_COLS if col != "abs_geometry_residual" or spec.merge_well_diagnostics]
+    return RESIDUAL_META_COLS
+
+
+def load_target_frame(spec: ModelSpec) -> pd.DataFrame:
+    path = FEATURE_DIR / spec.target_csv
+    header = pd.read_csv(path, nrows=0).columns.tolist()
+    if spec.target_csv == "leftover_targets.csv":
+        desired = [
+            "well",
+            "split",
+            "row",
+            "id",
+            "truth_tvt",
+            "baseline_tvt",
+            "residual_target",
+            "geometry_oof_residual",
+            "leftover_target",
+            "abs_geometry_residual",
+        ]
+    else:
+        desired = RESIDUAL_META_COLS
+    usecols = [col for col in desired if col in header]
+    frame = load_csv(path, usecols=usecols)
+    for col in ("truth_tvt", "baseline_tvt", "residual_target", "geometry_oof_residual", "leftover_target", "abs_geometry_residual"):
+        if col in frame.columns:
+            frame[col] = frame[col].astype("float64")
+    return frame
+
+
+def load_geometry_test_residuals(test_df: pd.DataFrame) -> pd.Series:
+    if not GEOMETRY_TEST_PATH.exists():
+        raise FileNotFoundError(
+            f"{GEOMETRY_TEST_PATH} is missing; run scripts/train_residual_model.py --spec geometry first"
+        )
+    geometry_test = pd.read_csv(GEOMETRY_TEST_PATH, dtype={"id": "string"})
+    if "tvt" in geometry_test.columns:
+        geometry_test = geometry_test.rename(columns={"tvt": "geometry_pred"})
+    elif "final_pred" in geometry_test.columns:
+        geometry_test = geometry_test.rename(columns={"final_pred": "geometry_pred"})
+    else:
+        raise ValueError(f"{GEOMETRY_TEST_PATH} must contain tvt or final_pred")
+    merged = test_df[["id", "baseline_tvt"]].merge(geometry_test[["id", "geometry_pred"]], on="id", how="left", validate="one_to_one")
+    return merged["geometry_pred"] - merged["baseline_tvt"]
 
 
 def load_feature_bundle(split: str, files: list[str], feature_cols: list[str], include_baseline_tvt: bool = False) -> pd.DataFrame:
@@ -329,7 +463,11 @@ def fit_sgd_model(x: pd.DataFrame, y: pd.Series, params: dict[str, object]) -> o
             average=True,
         ),
     )
-    model.fit(x, y)
+    sample_weight = params.get("sample_weight")
+    if sample_weight is not None:
+        model.fit(x, y, sgdregressor__sample_weight=sample_weight)
+    else:
+        model.fit(x, y)
     return model
 
 
@@ -353,7 +491,11 @@ def fit_tree_model(x: pd.DataFrame, y: pd.Series, params: dict[str, object]) -> 
                 n_jobs=max(1, int(params.get("n_jobs", 1))),
                 tree_method=str(params.get("tree_method", "hist")),
             )
-            model.fit(x, y)
+            sample_weight = params.get("sample_weight")
+            if sample_weight is not None:
+                model.fit(x, y, sample_weight=sample_weight)
+            else:
+                model.fit(x, y)
             setattr(model, "_rogii_backend", "xgboost")
             return model
         except Exception as exc:
@@ -368,7 +510,11 @@ def fit_tree_model(x: pd.DataFrame, y: pd.Series, params: dict[str, object]) -> 
         min_samples_leaf=int(params.get("min_samples_leaf", 20)),
         random_state=random_state,
     )
-    model.fit(x, y)
+    sample_weight = params.get("sample_weight")
+    if sample_weight is not None:
+        model.fit(x, y, sample_weight=sample_weight)
+    else:
+        model.fit(x, y)
     setattr(model, "_rogii_backend", "hist_gradient_boosting")
     return model
 
@@ -414,14 +560,21 @@ def compute_feature_importance(model: object, cols: list[str]) -> pd.DataFrame:
     return pd.DataFrame({"feature": cols, "importance": np.zeros(len(cols), dtype=float)})
 
 
-def train_oof(train_df: pd.DataFrame, fit_df: pd.DataFrame, cols: list[str], params: dict[str, float | int]) -> tuple[np.ndarray, dict[str, float], pd.DataFrame]:
+def train_oof(
+    train_df: pd.DataFrame,
+    fit_df: pd.DataFrame,
+    cols: list[str],
+    params: dict[str, float | int],
+    target_col: str = "residual_target",
+) -> tuple[np.ndarray, dict[str, float], pd.DataFrame]:
     wells = train_df["well"].astype(str).drop_duplicates().to_numpy()
     unique_wells = len(wells)
-    n_splits = min(max(int(params.get("n_splits", 3)), 2), unique_wells)
+    n_splits = min(max(int(params.get("n_splits", 5)), 2), unique_wells)
     splitter = GroupKFold(n_splits=n_splits)
     oof = np.zeros(len(train_df), dtype=float)
     fold_rows = []
     fold_backends: list[str] = []
+    use_sample_weight = bool(params.get("use_sample_weight", True))
 
     for fold_id, (train_idx, valid_idx) in enumerate(splitter.split(np.zeros((unique_wells, 1)), groups=wells), start=1):
         print(f"  fold {fold_id}/{n_splits}: training", flush=True)
@@ -429,23 +582,26 @@ def train_oof(train_df: pd.DataFrame, fit_df: pd.DataFrame, cols: list[str], par
         valid_wells = set(wells[valid_idx])
         train_block = fit_df[fit_df["well"].isin(train_wells)]
         valid_mask = train_df["well"].isin(valid_wells)
-        model = fit_model(train_block[cols], train_block["residual_target"], params)
+        fold_params = dict(params)
+        if use_sample_weight:
+            fold_params["sample_weight"] = compute_sample_weights(train_block)
+        model = fit_model(train_block[cols], train_block[target_col], fold_params)
         fold_backends.append(str(getattr(model, "_rogii_backend", params.get("model_backend", "unknown"))))
         preds = model.predict(train_df.loc[valid_mask, cols])
         oof[valid_mask.to_numpy()] = preds
         fold_rows.append(
             {
                 "fold": fold_id,
-                "rmse": float(mean_squared_error(train_df.loc[valid_mask, "residual_target"], preds) ** 0.5),
+                "rmse": float(mean_squared_error(train_df.loc[valid_mask, target_col], preds) ** 0.5),
                 "rows": int(valid_mask.sum()),
             }
         )
         print(f"  fold {fold_id}/{n_splits}: done", flush=True)
 
     metrics = {
-        "rmse": float(mean_squared_error(train_df["residual_target"], oof) ** 0.5),
-        "mae": float(np.mean(np.abs(train_df["residual_target"].to_numpy(dtype=float) - oof))),
-        "bias": float(np.mean(oof - train_df["residual_target"].to_numpy(dtype=float))),
+        "rmse": float(mean_squared_error(train_df[target_col], oof) ** 0.5),
+        "mae": float(np.mean(np.abs(train_df[target_col].to_numpy(dtype=float) - oof))),
+        "bias": float(np.mean(oof - train_df[target_col].to_numpy(dtype=float))),
         "backend": ",".join(sorted(set(fold_backends))) if fold_backends else str(params.get("model_backend", "unknown")),
     }
     return oof, metrics, pd.DataFrame(fold_rows)
@@ -501,20 +657,25 @@ def run_spec(
     REPORT_DIR.mkdir(exist_ok=True)
     SUBMISSION_DIR.mkdir(exist_ok=True)
 
-    print(f"[{spec.name}] loading residual targets", flush=True)
-    residual_targets = load_csv(
-        FEATURE_DIR / "residual_targets.csv",
-        usecols=RESIDUAL_META_COLS,
-        dtype={"truth_tvt": "float64", "baseline_tvt": "float64", "residual_target": "float64"},
-    )
+    if spec.stack_geometry_correction and not (FEATURE_DIR / spec.target_csv).exists():
+        raise FileNotFoundError(
+            f"{FEATURE_DIR / spec.target_csv} is missing; run scripts/build_leftover_targets.py first"
+        )
+
+    print(f"[{spec.name}] loading targets from {spec.target_csv}", flush=True)
+    residual_targets = load_target_frame(spec)
 
     train_df = load_feature_bundle("train", spec.feature_files, spec.feature_cols, include_baseline_tvt=False)
     train_df = append_aligned(residual_targets, train_df)
+    if spec.merge_well_diagnostics:
+        train_df = merge_well_features(train_df, load_part3_well_features())
 
     missing = [c for c in spec.feature_cols if c not in train_df.columns]
     if missing:
         raise KeyError(f"Missing required feature columns for {spec.name}: {missing}")
     train_df = train_df.sort_values(["well", "row"], kind="mergesort").reset_index(drop=True)
+    if spec.target_col not in train_df.columns:
+        raise KeyError(f"Missing target column {spec.target_col} for {spec.name}")
 
     fit_df = thin_by_well(train_df, spec.max_rows_per_well)
     fit_fraction = float(len(fit_df) / len(train_df)) if len(train_df) else 0.0
@@ -542,12 +703,22 @@ def run_spec(
         "n_splits": n_splits,
         **tree_params,
     }
-    oof, metrics, fold_df = train_oof(train_df, fit_df, spec.feature_cols, params)
+    oof, metrics, fold_df = train_oof(train_df, fit_df, spec.feature_cols, params, target_col=spec.target_col)
     train_df["oof_residual_pred"] = oof
-    train_df["final_pred"] = train_df["baseline_tvt"] + train_df["oof_residual_pred"]
+    if spec.stack_geometry_correction:
+        if "geometry_oof_residual" not in train_df.columns:
+            raise KeyError(f"{spec.name} requires geometry_oof_residual in {spec.target_csv}")
+        train_df["geometry_correction"] = train_df["geometry_oof_residual"]
+        train_df["stacked_correction"] = train_df["geometry_correction"] + train_df["oof_residual_pred"]
+        train_df["final_pred"] = train_df["baseline_tvt"] + train_df["stacked_correction"]
+    else:
+        train_df["final_pred"] = train_df["baseline_tvt"] + train_df["oof_residual_pred"]
     train_df["abs_error"] = np.abs(train_df["truth_tvt"] - train_df["final_pred"])
 
-    model = fit_model(fit_df[spec.feature_cols], fit_df["residual_target"], params)
+    fit_params = dict(params)
+    if params.get("use_sample_weight", True):
+        fit_params["sample_weight"] = compute_sample_weights(fit_df)
+    model = fit_model(fit_df[spec.feature_cols], fit_df[spec.target_col], fit_params)
     feature_importance = compute_feature_importance(model, spec.feature_cols)
     actual_backend = str(getattr(model, "_rogii_backend", model_backend))
     if require_xgboost and spec.model_family == "tree" and actual_backend != "xgboost":
@@ -572,8 +743,16 @@ def run_spec(
                 "model_backend": actual_backend,
                 "requested_model_backend": model_backend,
                 "features": spec.feature_cols,
+                "target_csv": spec.target_csv,
+                "target_col": spec.target_col,
+                "stack_geometry_correction": spec.stack_geometry_correction,
                 "params": params,
                 "metrics": metrics,
+                "final_tvt_metrics": {
+                    "rmse": float(mean_squared_error(train_df["truth_tvt"], train_df["final_pred"]) ** 0.5),
+                    "mae": float(np.mean(np.abs(train_df["truth_tvt"] - train_df["final_pred"]))),
+                    "bias": float(np.mean(train_df["final_pred"] - train_df["truth_tvt"])),
+                },
                 "train_rows": int(len(train_df)),
                 "fit_rows": int(len(fit_df)),
                 "fit_fraction": fit_fraction,
@@ -588,9 +767,25 @@ def run_spec(
     feature_list_path.write_text("\n".join(spec.feature_cols) + "\n", encoding="utf-8")
 
     oof_path = OUTPUT_DIR / spec.output_oof
-    train_df[["well", "split", "row", "id", "truth_tvt", "baseline_tvt", "residual_target", "oof_residual_pred", "final_pred", "abs_error"]].to_csv(
-        oof_path, index=False
-    )
+    oof_cols = [
+        "well",
+        "split",
+        "row",
+        "id",
+        "truth_tvt",
+        "baseline_tvt",
+        spec.target_col,
+        "oof_residual_pred",
+        "final_pred",
+        "abs_error",
+    ]
+    if spec.stack_geometry_correction:
+        oof_cols.insert(8, "geometry_correction")
+        oof_cols.insert(9, "stacked_correction")
+    if "residual_target" not in oof_cols and "residual_target" in train_df.columns:
+        oof_cols.insert(7, "residual_target")
+    oof_cols = [col for col in oof_cols if col in train_df.columns]
+    train_df[oof_cols].to_csv(oof_path, index=False)
     per_well = (
         train_df.groupby("well", as_index=False)
         .agg(
@@ -605,12 +800,24 @@ def run_spec(
     per_well.to_csv(cv_path, index=False)
 
     test_df = load_feature_bundle("test", spec.feature_files, spec.feature_cols, include_baseline_tvt=True)
+    if spec.merge_well_diagnostics:
+        test_diag = load_part3_well_features()
+        if not test_diag.empty:
+            test_df = merge_well_features(test_df, test_diag)
+    if spec.stack_geometry_correction and "abs_geometry_residual" in spec.feature_cols:
+        geometry_residual = load_geometry_test_residuals(test_df)
+        test_df["abs_geometry_residual"] = geometry_residual.abs()
     missing_test = [c for c in spec.feature_cols if c not in test_df.columns]
     if missing_test:
         raise KeyError(f"Missing required test columns for {spec.name}: {missing_test}")
     test_df = test_df.sort_values(["well", "row"], kind="mergesort").reset_index(drop=True)
     test_df["residual_pred"] = model.predict(test_df[spec.feature_cols])
-    test_df["final_pred"] = test_df["baseline_tvt"] + test_df["residual_pred"]
+    if spec.stack_geometry_correction:
+        test_df["geometry_correction"] = load_geometry_test_residuals(test_df)
+        test_df["stacked_correction"] = test_df["geometry_correction"] + test_df["residual_pred"]
+        test_df["final_pred"] = test_df["baseline_tvt"] + test_df["stacked_correction"]
+    else:
+        test_df["final_pred"] = test_df["baseline_tvt"] + test_df["residual_pred"]
     test_out_path = OUTPUT_DIR / spec.output_test
     test_df[["id", "final_pred"]].rename(columns={"final_pred": "tvt"}).to_csv(test_out_path, index=False)
     submission_path = SUBMISSION_DIR / spec.output_submission
@@ -637,7 +844,12 @@ def main() -> int:
     parser.add_argument("--alpha", type=float, default=0.0005)
     parser.add_argument("--max-iter", type=int, default=30)
     parser.add_argument("--tol", type=float, default=1e-3)
-    parser.add_argument("--n-splits", type=int, default=3)
+    parser.add_argument("--n-splits", type=int, default=5)
+    parser.add_argument(
+        "--no-sample-weight",
+        action="store_true",
+        help="Disable per-well sample weights during residual training.",
+    )
     parser.add_argument("--tree-backend", choices=["auto", "xgboost", "hist_gradient_boosting"], default="auto")
     parser.add_argument("--require-xgboost", action="store_true", help="Fail instead of falling back when the selected tree backend is not XGBoost.")
     parser.add_argument("--learning-rate", type=float, default=0.05)
@@ -675,6 +887,7 @@ def main() -> int:
         "max_leaf_nodes": args.max_leaf_nodes,
         "min_samples_leaf": args.min_samples_leaf,
         "l2_regularization": args.l2_regularization,
+        "use_sample_weight": not args.no_sample_weight,
     }
     specs = SPECS.values() if args.spec == "all" else [SPECS[args.spec]]
     for spec in specs:

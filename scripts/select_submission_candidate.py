@@ -227,6 +227,36 @@ def candidate_specs() -> list[CandidateSpec]:
             submission_path=SUBMISSION_DIR / "xgb_residual_submission.csv",
             metadata_paths=(MODEL_DIR / "residual_xgb_config.json", REPORT_DIR / "residual_xgb_cv_report.md"),
         ),
+        CandidateSpec(
+            name="gated_geometry",
+            kind="gated_residual",
+            oof_path=OUTPUT_DIR / "gated_geometry_oof.csv",
+            pred_col="final_pred",
+            submission_path=SUBMISSION_DIR / "gated_geometry_submission.csv",
+            metadata_paths=(MODEL_DIR / "gated_geometry_config.json", REPORT_DIR / "gated_geometry_cv_report.md"),
+        ),
+        CandidateSpec(
+            name="xgb_leftover",
+            kind="stacked_tree_residual",
+            oof_path=OUTPUT_DIR / "residual_xgb_leftover_oof.csv",
+            pred_col="final_pred",
+            submission_path=SUBMISSION_DIR / "xgb_leftover_submission.csv",
+            metadata_paths=(
+                MODEL_DIR / "residual_xgb_leftover_config.json",
+                REPORT_DIR / "residual_xgb_leftover_cv_report.md",
+            ),
+        ),
+        CandidateSpec(
+            name="gated_geometry_plus_xgb_leftover",
+            kind="gated_stack",
+            oof_path=OUTPUT_DIR / "gated_geometry_plus_xgb_leftover_oof.csv",
+            pred_col="final_pred",
+            submission_path=SUBMISSION_DIR / "gated_geometry_plus_xgb_leftover_submission.csv",
+            metadata_paths=(
+                MODEL_DIR / "gated_geometry_plus_xgb_leftover_config.json",
+                REPORT_DIR / "gated_geometry_plus_xgb_leftover_cv_report.md",
+            ),
+        ),
     ]
     blend_path = OUTPUT_DIR / "blend_oof.csv"
     for variant in ("conservative", "balanced", "aggressive", "optimized"):

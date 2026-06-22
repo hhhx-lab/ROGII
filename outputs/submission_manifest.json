@@ -1,0 +1,28 @@
+{
+  "model_members": [
+    "baseline_tail_slope",
+    "geometry_residual",
+    "part3_router"
+  ],
+  "weights": {
+    "baseline": 0.35,
+    "geometry": 0.65
+  },
+  "optimized_route_weights": {
+    "__default__": 1.0,
+    "baseline_fallback": 1.0,
+    "geometry_residual": 1.0,
+    "gr_residual": 0.95,
+    "typewell_alignment": 1.0
+  },
+  "clip_lower": 9000.0,
+  "clip_upper": 13000.0,
+  "routes": {
+    "gr_residual": 14151
+  },
+  "row_count": 14151,
+  "selected_by_oof": {
+    "variant": "optimized",
+    "rmse": 16.293157661424246
+  }
+}

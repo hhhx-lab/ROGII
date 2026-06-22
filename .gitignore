@@ -19,9 +19,14 @@ outputs/*
 !outputs/ensemble_cv_summary.csv
 !outputs/ensemble_route_weights.csv
 !outputs/submission_manifest.json
+!outputs/selected_candidate.json
+!outputs/gated_alpha_by_well.csv
 features/*
 !features/.gitkeep
 !features/README.md
+models/*
+!models/*.json
+!models/*.txt
 packages/*
 !packages/.gitkeep
 !packages/README.md
@@ -46,5 +51,9 @@ submissions/*.csv
 !submissions/balanced_submission.csv
 !submissions/conservative_submission.csv
 !submissions/geometry_residual_submission.csv
+!submissions/gated_geometry_submission.csv
+!submissions/gated_geometry_plus_xgb_leftover_submission.csv
 !submissions/optimized_submission.csv
 !submissions/optimized_postprocessed_submission.csv
+!submissions/xgb_leftover_submission.csv
+!submissions/xgb_residual_submission.csv

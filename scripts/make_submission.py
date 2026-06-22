@@ -24,16 +24,32 @@ VARIANT_FILES = {
     "aggressive": SUBMISSION_DIR / "aggressive_submission.csv",
     "optimized": SUBMISSION_DIR / "optimized_submission.csv",
     "geometry": SUBMISSION_DIR / "geometry_residual_submission.csv",
+    "gated_geometry": SUBMISSION_DIR / "gated_geometry_submission.csv",
     "xgb": SUBMISSION_DIR / "xgb_residual_submission.csv",
+    "xgb_leftover": SUBMISSION_DIR / "xgb_leftover_submission.csv",
+    "gated_geometry_plus_xgb_leftover": SUBMISSION_DIR / "gated_geometry_plus_xgb_leftover_submission.csv",
 }
-POSTPROCESSABLE_VARIANTS = {"conservative", "balanced", "aggressive", "optimized", "geometry", "xgb"}
+POSTPROCESSABLE_VARIANTS = {
+    "conservative",
+    "balanced",
+    "aggressive",
+    "optimized",
+    "geometry",
+    "gated_geometry",
+    "xgb",
+    "xgb_leftover",
+    "gated_geometry_plus_xgb_leftover",
+}
 POSTPROCESS_OOF_FILES = {
     "conservative": OUTPUT_DIR / "blend_oof.csv",
     "balanced": OUTPUT_DIR / "blend_oof.csv",
     "aggressive": OUTPUT_DIR / "blend_oof.csv",
     "optimized": OUTPUT_DIR / "blend_oof.csv",
     "geometry": OUTPUT_DIR / "residual_geometry_oof.csv",
+    "gated_geometry": OUTPUT_DIR / "gated_geometry_oof.csv",
     "xgb": OUTPUT_DIR / "residual_xgb_oof.csv",
+    "xgb_leftover": OUTPUT_DIR / "residual_xgb_leftover_oof.csv",
+    "gated_geometry_plus_xgb_leftover": OUTPUT_DIR / "gated_geometry_plus_xgb_leftover_oof.csv",
 }
 
 

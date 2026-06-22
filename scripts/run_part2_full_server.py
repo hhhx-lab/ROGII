@@ -113,6 +113,56 @@ def build_steps(args: argparse.Namespace) -> list[tuple[str, list[str], dict[str
                 },
             )
     )
+    if args.with_gated_pipeline:
+        if args.residual_spec != "geometry":
+            geometry_train_cmd = [
+                py,
+                "scripts/train_residual_model.py",
+                "--spec",
+                "geometry",
+                "--max-rows-per-well",
+                str(args.train_rows_per_well),
+                "--max-iter",
+                str(args.max_iter),
+                "--min-fit-fraction",
+                str(args.min_fit_fraction),
+            ]
+            steps.append(("part2_geometry_residual_training", geometry_train_cmd, {}))
+        steps.extend(
+            [
+                ("part2_gated_geometry", [py, "scripts/build_gated_geometry.py"], {}),
+                ("part2_leftover_targets", [py, "scripts/build_leftover_targets.py"], {}),
+            ]
+        )
+        if args.with_xgb_leftover:
+            leftover_train_cmd = [
+                py,
+                "scripts/train_residual_model.py",
+                "--spec",
+                "xgb_leftover",
+                "--max-rows-per-well",
+                str(args.train_rows_per_well),
+                "--max-iter",
+                str(args.max_iter),
+                "--learning-rate",
+                str(args.learning_rate),
+                "--max-leaf-nodes",
+                str(args.max_leaf_nodes),
+                "--min-samples-leaf",
+                str(args.min_samples_leaf),
+                "--l2-regularization",
+                str(args.l2),
+                "--min-fit-fraction",
+                str(args.min_fit_fraction),
+            ]
+            if args.require_xgboost:
+                leftover_train_cmd.append("--require-xgboost")
+            steps.extend(
+                [
+                    ("part2_xgb_leftover_training", leftover_train_cmd, {}),
+                    ("part2_gated_stack", [py, "scripts/build_gated_stack.py"], {}),
+                ]
+            )
     steps.append(("part2_completion_audit", [py, "scripts/validate_part2_outputs.py", "--primary-spec", args.residual_spec], {}))
     return steps
 
@@ -160,7 +210,36 @@ def write_summary(results: list[dict[str, object]], started_at: str, finished_at
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the full Part 2 server pipeline from data checks to package creation.")
-    parser.add_argument("--residual-spec", choices=["geometry", "xgb"], default="xgb", help="Leaderboard full run defaults to the XGBoost/tree residual candidate.")
+    parser.add_argument(
+        "--residual-spec",
+        choices=["geometry", "xgb", "xgb_leftover"],
+        default="geometry",
+        help="Leaderboard full run defaults to geometry SGD residual; xgb is a direct-residual control; xgb_leftover is the geometry stack layer.",
+    )
+    parser.add_argument(
+        "--with-gated-pipeline",
+        action="store_true",
+        default=True,
+        help="Run gated_geometry and leftover-target generation after geometry residual training.",
+    )
+    parser.add_argument(
+        "--without-gated-pipeline",
+        action="store_false",
+        dest="with_gated_pipeline",
+        help="Skip gater and leftover stack steps.",
+    )
+    parser.add_argument(
+        "--with-xgb-leftover",
+        action="store_true",
+        default=True,
+        help="Train xgb_leftover and build gated_geometry_plus_xgb_leftover when the gated pipeline is enabled.",
+    )
+    parser.add_argument(
+        "--without-xgb-leftover",
+        action="store_false",
+        dest="with_xgb_leftover",
+        help="Skip xgb_leftover training and gated stack build.",
+    )
     parser.add_argument("--train-rows-per-well", type=int, default=0, help="0 means use all rows per well for residual training.")
     parser.add_argument("--min-fit-fraction", type=float, default=0.95)
     parser.add_argument("--max-iter", type=int, default=500, help="HistGradientBoosting max_iter for full residual training.")
