@@ -17,6 +17,8 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = ROOT / "outputs"
 REPORT_DIR = ROOT / "reports"
 SUBMISSION_DIR = ROOT / "submissions"
+OOF_SUMMARY_PATH = OUTPUT_DIR / "postprocess_oof_summary.csv"
+OOF_PER_WELL_PATH = OUTPUT_DIR / "postprocess_oof_by_well.csv"
 
 ROUTE_CONFIDENCE = {
     "typewell_alignment": 0.85,
@@ -24,6 +26,7 @@ ROUTE_CONFIDENCE = {
     "geometry_residual": 0.55,
     "baseline_fallback": 0.35,
 }
+SUPPORTED_VARIANTS = ["conservative", "balanced", "aggressive", "optimized", "geometry", "xgb"]
 
 
 @dataclass
@@ -51,6 +54,13 @@ def safe_quantile(values: pd.Series | np.ndarray, q: float, default: float) -> f
 
 def safe_rmse(y_true: pd.Series | np.ndarray, y_pred: pd.Series | np.ndarray) -> float:
     return float(mean_squared_error(np.asarray(y_true, dtype=float), np.asarray(y_pred, dtype=float)) ** 0.5)
+
+
+def markdown_table(frame: pd.DataFrame, index: bool = False) -> str:
+    try:
+        return frame.to_markdown(index=index)
+    except ImportError:
+        return frame.to_string(index=index)
 
 
 def load_submission(path: Path) -> pd.DataFrame:
@@ -93,10 +103,25 @@ def load_oof_variant(path: Path, variant: str) -> pd.DataFrame:
     frame = pd.read_csv(path, dtype={"id": "string", "well": "string"})
     col = f"{variant}_tvt"
     if col not in frame.columns:
-        raise ValueError(f"{path} must contain {col}")
+        if "final_pred" in frame.columns:
+            col = "final_pred"
+        elif "tvt" in frame.columns:
+            col = "tvt"
+        else:
+            raise ValueError(f"{path} must contain {variant}_tvt, final_pred, or tvt")
     if "baseline_tvt" not in frame.columns or "truth_tvt" not in frame.columns:
         raise ValueError(f"{path} must contain baseline_tvt and truth_tvt")
     return frame[["id", "well", "truth_tvt", "baseline_tvt", col]].rename(columns={col: "variant_tvt"})
+
+
+def usable_oof_variant(oof_variant: pd.DataFrame | None, diagnostics_oof: pd.DataFrame, min_well_fraction: float = 0.8) -> pd.DataFrame | None:
+    if oof_variant is None:
+        return None
+    expected_wells = int(diagnostics_oof["well"].nunique()) if "well" in diagnostics_oof else 0
+    actual_wells = int(oof_variant["well"].nunique()) if "well" in oof_variant else 0
+    if expected_wells and actual_wells < max(1, int(expected_wells * min_well_fraction)):
+        return None
+    return oof_variant
 
 
 def route_scores(diagnostics: pd.DataFrame) -> pd.DataFrame:
@@ -242,6 +267,48 @@ def evaluate_oof(post_frame: pd.DataFrame, variant: str, input_col: str = "input
     return summary, per_well
 
 
+def metric_value(summary: pd.DataFrame, metric: str) -> float | None:
+    if summary.empty:
+        return None
+    values = summary.loc[summary["metric"].eq(metric), "value"]
+    if values.empty:
+        return None
+    return float(values.iloc[0])
+
+
+def postprocess_decision(summary: pd.DataFrame, allow_worse: bool, min_improvement: float) -> dict[str, object]:
+    before = metric_value(summary, "rmse_before")
+    after = metric_value(summary, "rmse_after")
+    if before is None or after is None:
+        return {
+            "accepted": False,
+            "reason": "no_oof_guard_available",
+            "rmse_before": before,
+            "rmse_after": after,
+            "min_improvement": min_improvement,
+            "actual_improvement": None,
+    }
+    if allow_worse:
+        return {
+            "accepted": True,
+            "reason": "allow_worse",
+            "rmse_before": before,
+            "rmse_after": after,
+            "min_improvement": min_improvement,
+            "actual_improvement": before - after,
+        }
+    actual_improvement = before - after
+    accepted = actual_improvement >= min_improvement
+    return {
+        "accepted": bool(accepted),
+        "reason": "oof_improvement_guard_passed" if accepted else "oof_improvement_guard_failed",
+        "rmse_before": before,
+        "rmse_after": after,
+        "min_improvement": min_improvement,
+        "actual_improvement": actual_improvement,
+    }
+
+
 def postprocess_submission(
     submission: pd.DataFrame,
     variant: str,
@@ -309,53 +376,69 @@ def postprocess_submission(
 def write_report(
     report_path: Path,
     variant: str,
+    oof_path: Path | None,
     summary: pd.DataFrame,
     per_well: pd.DataFrame,
     diagnostics: pd.DataFrame,
     stats: dict[str, RouteStats],
     global_stats: RouteStats,
+    decision: dict[str, object] | None = None,
 ) -> None:
     report_path.parent.mkdir(exist_ok=True)
+    decision = decision or {}
     lines = [
         "# Postprocess Report",
         "",
         f"- Variant: `{variant}`",
+        f"- OOF path: `{str(oof_path) if oof_path is not None else ''}`",
         f"- Rows: {len(diagnostics):,}",
+        f"- Decision: `{'accepted' if decision.get('accepted') else 'rejected'}`",
+        f"- Decision reason: `{decision.get('reason', 'unknown')}`",
+        f"- RMSE before: `{decision.get('rmse_before')}`",
+        f"- RMSE after: `{decision.get('rmse_after')}`",
+        f"- Actual RMSE improvement: `{decision.get('actual_improvement')}`",
+        f"- Minimum required improvement: `{decision.get('min_improvement')}`",
         "",
         "## OOF Summary",
         "",
-        summary.round(4).to_markdown(index=False) if len(summary) else "_No OOF available_",
+        markdown_table(summary.round(4), index=False) if len(summary) else "_No OOF available_",
         "",
         "## Worst Wells",
         "",
-        per_well.head(15).round(4).to_markdown(index=False) if len(per_well) else "_No OOF available_",
+        markdown_table(per_well.head(15).round(4), index=False) if len(per_well) else "_No OOF available_",
         "",
         "## Route Stats",
         "",
-        pd.DataFrame(
-            [
-                {
-                    "route": route,
-                    "residual_low": value.residual_low,
-                    "residual_high": value.residual_high,
-                    "step_cap": value.step_cap,
-                }
-                for route, value in stats.items()
-                if route != "__global__"
-            ]
-        ).round(4).to_markdown(index=False),
+        markdown_table(
+            pd.DataFrame(
+                [
+                    {
+                        "route": route,
+                        "residual_low": value.residual_low,
+                        "residual_high": value.residual_high,
+                        "step_cap": value.step_cap,
+                    }
+                    for route, value in stats.items()
+                    if route != "__global__"
+                ]
+            ).round(4),
+            index=False,
+        ),
         "",
         "## Global Stats",
         "",
-        pd.DataFrame(
-            [
-                {
-                    "residual_low": global_stats.residual_low,
-                    "residual_high": global_stats.residual_high,
-                    "step_cap": global_stats.step_cap,
-                }
-            ]
-        ).round(4).to_markdown(index=False),
+        markdown_table(
+            pd.DataFrame(
+                [
+                    {
+                        "residual_low": global_stats.residual_low,
+                        "residual_high": global_stats.residual_high,
+                        "step_cap": global_stats.step_cap,
+                    }
+                ]
+            ).round(4),
+            index=False,
+        ),
     ]
     report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -369,6 +452,8 @@ def run_postprocess(
     oof_path: Path | None = None,
     clip_lower: float = 9000.0,
     clip_upper: float = 13000.0,
+    allow_worse: bool = False,
+    min_improvement: float = 0.0,
 ) -> pd.DataFrame:
     submission = load_submission(input_path)
     diagnostics_all = route_scores(load_route_diagnostics())
@@ -376,6 +461,7 @@ def run_postprocess(
     diagnostics_oof = diagnostics_all[diagnostics_all["split"] == "train"].copy()
     baseline_test = load_baseline_test()
     oof_variant = load_oof_variant(oof_path, variant) if oof_path and oof_path.exists() else None
+    oof_variant = usable_oof_variant(oof_variant, diagnostics_oof)
     submission_out, diagnostics_out, summary, per_well, stats, global_stats = postprocess_submission(
         submission=submission,
         variant=variant,
@@ -389,17 +475,27 @@ def run_postprocess(
 
     if len(diagnostics_out) != len(submission):
         raise ValueError("Postprocess diagnostics row count mismatch")
+    decision = postprocess_decision(summary, allow_worse=allow_worse, min_improvement=min_improvement)
+    if not bool(decision["accepted"]):
+        submission_out = submission.copy()
+        diagnostics_out["post_tvt_guarded"] = diagnostics_out["post_tvt"]
+        diagnostics_out["post_tvt"] = diagnostics_out["input_tvt"]
+        diagnostics_out["delta_from_input"] = 0.0
     diagnostics_path.parent.mkdir(exist_ok=True)
     diagnostics_out.to_csv(diagnostics_path, index=False)
+    if len(summary):
+        summary.to_csv(OOF_SUMMARY_PATH, index=False)
+    if len(per_well):
+        per_well.to_csv(OOF_PER_WELL_PATH, index=False)
     output_path.parent.mkdir(exist_ok=True)
     submission_out.to_csv(output_path, index=False)
-    write_report(report_path, variant, summary, per_well, diagnostics_out, stats, global_stats)
+    write_report(report_path, variant, oof_path, summary, per_well, diagnostics_out, stats, global_stats, decision=decision)
     return submission_out
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Postprocess a submission variant and write diagnostics.")
-    parser.add_argument("--variant", default="balanced", choices=["conservative", "balanced", "aggressive"])
+    parser.add_argument("--variant", default="balanced", choices=SUPPORTED_VARIANTS)
     parser.add_argument("--input", type=Path, default=None)
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--diagnostics", type=Path, default=OUTPUT_DIR / "postprocess_diagnostics.csv")
@@ -407,6 +503,9 @@ def main() -> int:
     parser.add_argument("--oof", type=Path, default=OUTPUT_DIR / "blend_oof.csv")
     parser.add_argument("--clip-lower", type=float, default=9000.0)
     parser.add_argument("--clip-upper", type=float, default=13000.0)
+    parser.add_argument("--allow-worse", action="store_true", help="Write postprocessed output even when OOF RMSE gets worse.")
+    parser.add_argument("--min-improvement", type=float, default=0.0, help="Minimum OOF RMSE improvement required before accepting postprocess.")
+    parser.add_argument("--tolerance", type=float, default=0.0, help="Deprecated compatibility option; prefer --min-improvement.")
     args = parser.parse_args()
 
     input_path = args.input or (SUBMISSION_DIR / f"{args.variant}_submission.csv")
@@ -420,6 +519,8 @@ def main() -> int:
         oof_path=args.oof,
         clip_lower=args.clip_lower,
         clip_upper=args.clip_upper,
+        allow_worse=args.allow_worse,
+        min_improvement=args.min_improvement,
     )
     print(f"Wrote postprocessed submission to {output_path}")
     return 0

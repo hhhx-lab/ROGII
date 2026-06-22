@@ -9,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 from pandas.api.types import is_numeric_dtype
 
+from data_paths import load_sample_submission, resolve_sample_submission_path
 from rogii_utils import (
     DATA_DIR,
     DATA_VERSION_PATH,
@@ -173,12 +174,15 @@ def main() -> int:
                     f"test well {well} typewell has no Geology column; TVT/GR are available and Geology is optional in visible test"
                 )
 
-    sample_path = DATA_DIR / "sample_submission.csv"
     sample_rows = 0
-    if not sample_path.exists():
-        critical_errors.append("sample_submission.csv is missing")
-    else:
+    try:
+        sample_path = resolve_sample_submission_path()
         sample = pd.read_csv(sample_path)
+    except FileNotFoundError:
+        sample_path = None
+        sample = load_sample_submission()
+        warnings.append("sample_submission.csv is missing; synthesized submission ids from data/test hidden TVT_input rows")
+    if len(sample):
         sample_rows = len(sample)
         try:
             parsed = parse_submission_ids(sample)

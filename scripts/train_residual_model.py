@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.linear_model import SGDRegressor
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import GroupKFold
@@ -40,6 +41,10 @@ class ModelSpec:
     output_submission: str
     model_dir_name: str
     max_rows_per_well: int = 60
+    model_family: str = "sgd"
+    output_model: str | None = None
+    output_config: str | None = None
+    output_feature_list: str | None = None
 
 
 SPECS: dict[str, ModelSpec] = {
@@ -228,6 +233,23 @@ SPECS: dict[str, ModelSpec] = {
     ),
 }
 
+SPECS["xgb"] = ModelSpec(
+    name="xgb",
+    feature_files=SPECS["geometry"].feature_files,
+    feature_cols=SPECS["geometry"].feature_cols,
+    output_oof="residual_xgb_oof.csv",
+    output_cv="residual_xgb_cv_by_well.csv",
+    output_test="residual_xgb_test_predictions.csv",
+    output_report="residual_xgb_cv_report.md",
+    output_submission="xgb_residual_submission.csv",
+    model_dir_name="residual_xgb",
+    max_rows_per_well=60,
+    model_family="tree",
+    output_model="residual_xgb_model.pkl",
+    output_config="residual_xgb_config.json",
+    output_feature_list="residual_xgb_feature_list.txt",
+)
+
 
 def load_csv(path: Path, usecols: list[str] | None = None, dtype: dict[str, str] | None = None) -> pd.DataFrame:
     if not path.exists():
@@ -283,7 +305,16 @@ def load_feature_bundle(split: str, files: list[str], feature_cols: list[str], i
     return frame
 
 
-def fit_model(x: pd.DataFrame, y: pd.Series, params: dict[str, float | int]) -> object:
+def resolve_tree_backend() -> str:
+    try:
+        import xgboost  # noqa: F401
+
+        return "xgboost"
+    except Exception:
+        return "hist_gradient_boosting"
+
+
+def fit_sgd_model(x: pd.DataFrame, y: pd.Series, params: dict[str, object]) -> object:
     model = make_pipeline(
         StandardScaler(),
         SGDRegressor(
@@ -301,6 +332,55 @@ def fit_model(x: pd.DataFrame, y: pd.Series, params: dict[str, float | int]) -> 
     )
     model.fit(x, y)
     return model
+
+
+def fit_tree_model(x: pd.DataFrame, y: pd.Series, params: dict[str, object]) -> object:
+    backend = str(params.get("model_backend") or resolve_tree_backend())
+    random_state = int(params.get("random_state", 42))
+    max_iter = int(params.get("max_iter", 30))
+    if backend == "xgboost":
+        try:
+            from xgboost import XGBRegressor
+
+            model = XGBRegressor(
+                objective="reg:squarederror",
+                n_estimators=max_iter,
+                max_depth=int(params.get("max_depth", 4)),
+                learning_rate=float(params.get("learning_rate", 0.05)),
+                subsample=float(params.get("subsample", 0.9)),
+                colsample_bytree=float(params.get("colsample_bytree", 0.9)),
+                reg_lambda=float(params.get("reg_lambda", 1.0)),
+                random_state=random_state,
+                n_jobs=max(1, int(params.get("n_jobs", 1))),
+                tree_method=str(params.get("tree_method", "hist")),
+            )
+            model.fit(x, y)
+            setattr(model, "_rogii_backend", "xgboost")
+            return model
+        except Exception as exc:
+            print(f"xgboost backend unavailable during fit ({exc}); falling back to HistGradientBoostingRegressor", flush=True)
+
+    model = HistGradientBoostingRegressor(
+        loss="squared_error",
+        learning_rate=float(params.get("learning_rate", 0.05)),
+        max_iter=max_iter,
+        max_leaf_nodes=int(params.get("max_leaf_nodes", 31)),
+        l2_regularization=float(params.get("l2_regularization", 0.0)),
+        min_samples_leaf=int(params.get("min_samples_leaf", 20)),
+        random_state=random_state,
+    )
+    model.fit(x, y)
+    setattr(model, "_rogii_backend", "hist_gradient_boosting")
+    return model
+
+
+def fit_model(x: pd.DataFrame, y: pd.Series, params: dict[str, object]) -> object:
+    model_family = str(params.get("model_family", "sgd"))
+    if model_family == "tree":
+        return fit_tree_model(x, y, params)
+    if model_family == "sgd":
+        return fit_sgd_model(x, y, params)
+    raise ValueError(f"Unknown model family: {model_family}")
 
 
 def thin_by_well(df: pd.DataFrame, max_rows_per_well: int) -> pd.DataFrame:
@@ -327,6 +407,11 @@ def compute_feature_importance(model: object, cols: list[str]) -> pd.DataFrame:
         if len(values) == len(cols) and np.isfinite(values).any() and not np.allclose(values.sum(), 0.0):
             values = values / max(values.sum(), 1e-12)
             return pd.DataFrame({"feature": cols, "importance": values}).sort_values("importance", ascending=False)
+    if hasattr(model, "feature_importances_"):
+        values = np.asarray(getattr(model, "feature_importances_"), dtype=float).ravel()
+        if len(values) == len(cols) and np.isfinite(values).any() and not np.allclose(values.sum(), 0.0):
+            values = values / max(values.sum(), 1e-12)
+            return pd.DataFrame({"feature": cols, "importance": values}).sort_values("importance", ascending=False)
     return pd.DataFrame({"feature": cols, "importance": np.zeros(len(cols), dtype=float)})
 
 
@@ -337,6 +422,7 @@ def train_oof(train_df: pd.DataFrame, fit_df: pd.DataFrame, cols: list[str], par
     splitter = GroupKFold(n_splits=n_splits)
     oof = np.zeros(len(train_df), dtype=float)
     fold_rows = []
+    fold_backends: list[str] = []
 
     for fold_id, (train_idx, valid_idx) in enumerate(splitter.split(np.zeros((unique_wells, 1)), groups=wells), start=1):
         print(f"  fold {fold_id}/{n_splits}: training", flush=True)
@@ -345,6 +431,7 @@ def train_oof(train_df: pd.DataFrame, fit_df: pd.DataFrame, cols: list[str], par
         train_block = fit_df[fit_df["well"].isin(train_wells)]
         valid_mask = train_df["well"].isin(valid_wells)
         model = fit_model(train_block[cols], train_block["residual_target"], params)
+        fold_backends.append(str(getattr(model, "_rogii_backend", params.get("model_backend", "unknown"))))
         preds = model.predict(train_df.loc[valid_mask, cols])
         oof[valid_mask.to_numpy()] = preds
         fold_rows.append(
@@ -360,6 +447,7 @@ def train_oof(train_df: pd.DataFrame, fit_df: pd.DataFrame, cols: list[str], par
         "rmse": float(mean_squared_error(train_df["residual_target"], oof) ** 0.5),
         "mae": float(np.mean(np.abs(train_df["residual_target"].to_numpy(dtype=float) - oof))),
         "bias": float(np.mean(oof - train_df["residual_target"].to_numpy(dtype=float))),
+        "backend": ",".join(sorted(set(fold_backends))) if fold_backends else str(params.get("model_backend", "unknown")),
     }
     return oof, metrics, pd.DataFrame(fold_rows)
 
@@ -368,6 +456,8 @@ def build_report(spec: ModelSpec, metrics: dict[str, float], fold_df: pd.DataFra
     lines = [
         f"# Residual {spec.name.capitalize()} CV Report",
         "",
+        f"- Backend: `{metrics.get('backend', 'unknown')}`",
+        f"- CV backend: `{metrics.get('cv_backend', metrics.get('backend', 'unknown'))}`",
         f"- Training rows before thinning: {train_rows:,}",
         f"- Training rows after thinning: {fit_rows:,}",
         f"- OOF RMSE: {metrics['rmse']:.4f}",
@@ -415,7 +505,10 @@ def run_spec(spec: ModelSpec, alpha: float, max_iter: int, tol: float, n_splits:
     train_df = train_df.sort_values(["well", "row"], kind="mergesort").reset_index(drop=True)
 
     fit_df = thin_by_well(train_df, spec.max_rows_per_well)
+    model_backend = resolve_tree_backend() if spec.model_family == "tree" else "sgd"
     params = {
+        "model_family": spec.model_family,
+        "model_backend": model_backend,
         "alpha": alpha,
         "max_iter": max_iter,
         "tol": tol,
@@ -428,15 +521,23 @@ def run_spec(spec: ModelSpec, alpha: float, max_iter: int, tol: float, n_splits:
 
     model = fit_model(fit_df[spec.feature_cols], fit_df["residual_target"], params)
     feature_importance = compute_feature_importance(model, spec.feature_cols)
-    model_path = MODEL_DIR / f"{spec.model_dir_name}.pkl"
+    actual_backend = str(getattr(model, "_rogii_backend", model_backend))
+    metrics["cv_backend"] = metrics.get("backend", model_backend)
+    metrics["backend"] = actual_backend
+    params["requested_model_backend"] = model_backend
+    params["model_backend"] = actual_backend
+    model_path = MODEL_DIR / (spec.output_model or f"{spec.model_dir_name}.pkl")
     with model_path.open("wb") as fh:
         pickle.dump(model, fh)
 
-    config_path = MODEL_DIR / f"{spec.model_dir_name}_config.json"
+    config_path = MODEL_DIR / (spec.output_config or f"{spec.model_dir_name}_config.json")
     with config_path.open("w", encoding="utf-8") as fh:
         json.dump(
             {
                 "model_name": spec.name,
+                "model_family": spec.model_family,
+                "model_backend": actual_backend,
+                "requested_model_backend": model_backend,
                 "features": spec.feature_cols,
                 "params": params,
                 "metrics": metrics,
@@ -449,7 +550,7 @@ def run_spec(spec: ModelSpec, alpha: float, max_iter: int, tol: float, n_splits:
             indent=2,
             ensure_ascii=False,
         )
-    feature_list_path = MODEL_DIR / f"{spec.model_dir_name}_feature_list.txt"
+    feature_list_path = MODEL_DIR / (spec.output_feature_list or f"{spec.model_dir_name}_feature_list.txt")
     feature_list_path.write_text("\n".join(spec.feature_cols) + "\n", encoding="utf-8")
 
     oof_path = OUTPUT_DIR / spec.output_oof

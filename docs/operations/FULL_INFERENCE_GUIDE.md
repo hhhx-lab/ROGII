@@ -1,252 +1,755 @@
 # ROGII 全量推理指南
 
-这份文档说明当前仓库里，如何从 `data/raw/` 的原始比赛数据开始，走到可提交的 `submission.csv`。
+这份文档说明如何从比赛数据走到可提交的 `submission.csv`。它同时区分三件事：
 
-当前仓库状态先说清楚：
+- 当前已实现：现在仓库脚本能直接跑的流程；
+- 下一步计划实现：文档计划里已经明确，但代码还没完成的能力；
+- 完成优化后的推荐流程：后续冲榜时希望达到的标准流程。
 
-- Part 1 已完成，可作为稳定基线。
-- Part 2 的旧结果已经清理，不能再当成当前冻结产物。
-- Part 3 现在走的是 horizontal self-GR 对齐 + typewell 对齐增强路线。
-- Part 4 负责集成、后处理和最终提交导出。
+本轮计划的核心公式保持不变：
 
-## 1. 目标
+```text
+final_tvt = baseline_tvt + correction
+```
 
-最终要生成一个可提交文件：
+不要把流程理解成直接预测绝对 TVT。
 
-- 文件名：`submission.csv`
-- 列：`id,tvt`
-- 行数：与 `data/raw/sample_submission.csv` 完全一致
-- 顺序：与 `sample_submission.csv` 的 `id` 顺序完全一致
+## 1. 数据位置与契约
 
-## 2. 当前数据位置
-
-比赛原始数据统一放在：
+推荐数据位置：
 
 ```text
 data/
-`-- raw/
-    |-- train/
-    |-- test/
-    |-- sample_submission.csv
-    `-- AI_wellbore_geology_prediction_task_en.pptx
+|-- train/
+|-- test/
+`-- sample_submission.csv
 ```
 
-真实读取入口以 `data/raw/` 为准。`data/` 根目录只是历史兼容占位，不应再作为主要说明口径。
+脚本通过 `scripts/data_paths.py` 读取数据，兼容：
 
-## 3. 当前仓库里有哪些现成脚本
+- `data/train`、`data/test`
+- `data/raw/train`、`data/raw/test`
 
-这些脚本是现在的真实入口：
+一次实验只使用一套有效数据入口，避免新旧数据混用。
 
-- `scripts/run_eda.py`
-- `scripts/evaluate_baseline_cv.py`
-- `scripts/build_baseline_features.py`
-- `scripts/build_geometry_features.py`
-- `scripts/build_part3_diagnostics.py`
-- `scripts/build_part3_features.py`
-- `scripts/train_residual_model.py`
-- `scripts/evaluate_model_cv.py`
-- `scripts/evaluate_residual_multimask.py`
-- `scripts/blend_predictions.py`
-- `scripts/postprocess_predictions.py`
-- `scripts/make_submission.py`
-- `scripts/server_part2_preflight.py`
-- `scripts/run_part2_full_server.py`
-- `scripts/package_part2_server_outputs.py`
-- `scripts/inspect_part2_server_package.py`
+当前可运行的数据检查：
 
-## 4. 推荐环境
+```bash
+.venv/bin/python scripts/run_eda.py
+.venv/bin/python scripts/evaluate_baseline_cv.py
+```
 
-仓库默认使用项目本地虚拟环境：
+这些步骤会更新或生成：
+
+```text
+reports/eda_summary.md
+outputs/baseline_cv_by_well.csv
+reports/baseline_cv_report.md
+```
+
+验证重点：
+
+- train/test 文件能被找到；
+- sample submission 行数和 id 顺序正确；
+- 训练井 hidden rows 能用于 OOF；
+- baseline 结果能正常生成。
+
+## 2. 环境
+
+推荐使用项目本地虚拟环境：
 
 ```bash
 python -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
-后续都用：
+后续命令统一使用：
 
 ```bash
 .venv/bin/python ...
 ```
 
-这个环境至少要能跑通：
+不要在同一次 run 里混用系统 Python、Conda 和 `.venv`。
 
-- `numpy`
-- `pandas`
-- `scikit-learn`
-- `pyarrow`
+## 2.1 训练前清理 / 旧产物归档规则
 
-## 5. 先做最小健康检查
+正式 full run 之前，先把旧训练产物移动到 `archive/`，不要直接删除。
 
-如果你只是想确认仓库和数据都齐了，先跑：
+为什么要做：
+
+- `features/`、`outputs/`、`submissions/`、`reports/` 里可能混有不同 run 的旧文件；
+- candidate selection 依赖 OOF 覆盖、数据版本和同一次 run 的候选产物；
+- 旧 OOF 文件会让自动选择逻辑误判，例如只在少量井上比较候选；
+- leaderboard submission 应该从干净产物目录开始，避免把旧结果当成新结果。
+
+推荐归档目录格式：
+
+```text
+archive/runs/YYYYMMDD_HHMMSS_pre_full_run_cleanup/
+```
+
+可以归档的文件：
+
+```text
+features/*.csv
+features/*.parquet
+outputs/*.csv
+outputs/*.json
+submissions/*.csv
+submission.csv
+reports/candidate_selection_report.md
+reports/postprocess_report.md
+reports/ensemble_report.md
+reports/residual_*_report.md
+reports/full_inference_run_summary.md
+reports/full_inference_run_summary.json
+reports/part2_completion_audit.md
+reports/submission_log.md
+reports/step_time_log.md
+reports/figures/residual_geometry_*/
+```
+
+不能动的文件和目录：
+
+```text
+data/train
+data/test
+data/raw
+.venv
+scripts
+docs
+README.md
+requirements.txt
+.git
+.gitignore
+features/README.md
+features/.gitkeep
+outputs/README.md
+outputs/.gitkeep
+submissions/README.md
+```
+
+推荐操作流程：
+
+1. 看当前 git 状态，确认有哪些 dirty diff：
+
+```bash
+git status --short --branch
+git status --short --ignored
+du -sh data features outputs submissions reports .venv 2>/dev/null
+```
+
+2. 建归档目录：
+
+```bash
+mkdir -p archive/runs/<timestamp>_pre_full_run_cleanup
+```
+
+3. 把旧产物移动进去，保持相对路径结构。不要用 `rm` 删除旧结果。
+
+4. 在归档目录写 `cleanup_manifest.json` 和 `cleanup_manifest.md`，记录：
+
+```text
+cleanup started / finished time
+git branch
+HEAD commit
+pre-cleanup dirty summary
+moved files
+skipped files
+moved total size
+archive directory
+restore command
+```
+
+5. 清理后检查：
+
+```bash
+git status --short --branch
+du -sh data features outputs submissions reports archive 2>/dev/null
+find features -maxdepth 1 -type f | sort
+find outputs -maxdepth 1 -type f | sort
+find submissions -maxdepth 1 -type f | sort
+```
+
+检查重点：
+
+- `data/train` 和 `data/test` 还在；
+- `features/README.md` 和 `features/.gitkeep` 还在；
+- `outputs/README.md` 和 `outputs/.gitkeep` 还在；
+- `submissions/README.md` 还在；
+- 旧的大产物已经进入 `archive/runs/<run_id>/`；
+- `scripts/`、`docs/`、`.venv/` 没被误动。
+
+恢复方式：
+
+```bash
+rsync -av archive/runs/<run_id>/ ./
+```
+
+和 full run 的关系：
+
+- 训练前清理不是训练本身；
+- 清理完成后，再从 Step 1 开始跑 full inference；
+- 如果只是临时调试，不一定每次都归档；
+- 如果是准备正式 leaderboard submission，必须先归档旧产物。
+
+## 3. 当前已实现的全量流程
+
+当前可运行流程是：
+
+```text
+1. data contract / EDA
+2. baseline generation
+3. baseline CV
+4. feature build
+5. SGD residual candidate
+6. optional XGBoost/tree residual candidate
+7. Part 3 diagnostics / route
+8. blend candidate generation
+9. candidate selection on common OOF coverage
+10. postprocess with guard
+11. final submission export
+12. submission validation
+```
+
+注意：
+
+- 当前 residual correction 实际是 `StandardScaler + SGDRegressor`；
+- 当前脚本已支持 `--spec xgb`，优先 XGBoost，缺依赖时 fallback 到 sklearn HistGradientBoosting；
+- 当前 Part 3 主要是 diagnostics / route；
+- 当前 alignment correction / gater 还不是已完成强能力；
+- postprocess 只有 OOF 不变差才应被接受。
+
+## 4. 当前短期可运行命令
+
+如果你要从头跑当前已实现脚本，按下面顺序：
 
 ```bash
 .venv/bin/python scripts/run_eda.py
 .venv/bin/python scripts/evaluate_baseline_cv.py
-```
-
-会更新：
-
-- `reports/eda_summary.md`
-- `outputs/baseline_cv_by_well.csv`
-- `reports/baseline_cv_report.md`
-
-这一步的意义是确认数据契约、样例行数、训练隐藏段和 baseline 还正常。
-
-## 6. Part 1 当前基线
-
-Part 1 现在的主基线是 `B0_constant_last`，它来自训练井的隐藏尾段验证。
-
-如果要补齐或重建 Part 1 相关产物，按顺序跑：
-
-```bash
-.venv/bin/python scripts/build_baseline_features.py
-.venv/bin/python scripts/evaluate_baseline_cv.py
-```
-
-当前 Part 1 相关的结果文件主要是：
-
-- `outputs/baseline_predictions_train_hidden.csv`
-- `outputs/baseline_predictions_test.csv`
-- `features/baseline_features_train.csv`
-- `features/baseline_features_test.csv`
-- `features/residual_targets.csv`
-- `reports/residual_target_report.md`
-- `reports/baseline_cv_report.md`
-
-## 7. Part 2 当前状态
-
-Part 2 的旧成品已经清理过一次，所以这些结果不要再当成现成可用的冻结产物：
-
-- `models/residual_geometry*`
-- `outputs/residual_geometry*`
-- `submissions/geometry_residual*`
-- `reports/residual_geometry*`
-
-如果你要重新生成 Part 2，先走：
-
-```bash
 .venv/bin/python scripts/build_baseline_features.py
 .venv/bin/python scripts/build_geometry_features.py
-.venv/bin/python scripts/train_residual_model.py
-.venv/bin/python scripts/evaluate_model_cv.py
-.venv/bin/python scripts/evaluate_residual_multimask.py
-.venv/bin/python scripts/validate_part2_outputs.py
-```
-
-Part 2 生成/依赖的关键文件是：
-
-- `features/baseline_features_train.parquet`
-- `features/baseline_features_test.parquet`
-- `features/geometry_features_train.parquet`
-- `features/geometry_features_test.parquet`
-- `features/residual_targets.parquet`
-- `models/residual_geometry_hgb.pkl`
-- `models/residual_geometry_config.json`
-- `models/residual_geometry_feature_list.txt`
-- `outputs/residual_geometry_oof.csv`
-- `outputs/residual_geometry_cv_by_well.csv`
-- `outputs/residual_geometry_test_predictions.csv`
-- `outputs/residual_geometry_multimask_by_split.csv`
-- `outputs/residual_geometry_multimask_overall.csv`
-- `reports/residual_target_report.md`
-- `reports/residual_geometry_cv_report.md`
-- `reports/residual_geometry_failure_analysis.md`
-- `reports/residual_geometry_feature_importance.md`
-- `reports/residual_geometry_multimask_report.md`
-- `reports/residual_geometry_server_runbook.md`
-- `submissions/geometry_residual_submission.csv`
-
-注意：当前代码里 Part 2 仍有 parquet 口径的历史依赖，实际运行时以脚本为准；如果本地环境只看到 CSV，就说明这部分产物还没重建完整，不能直接跳过。
-
-## 8. Part 3 当前路线
-
-Part 3 不再只是“再做一个 residual”，而是：
-
-1. horizontal self-GR 对齐
-2. typewell 对齐
-3. route / confidence 诊断
-4. 为 Part 4 blend 提供路由信号
-
-对应脚本：
-
-```bash
-.venv/bin/python scripts/build_part3_diagnostics.py
-.venv/bin/python scripts/build_part3_features.py
-```
-
-会更新：
-
-- `outputs/part3_diagnostics.csv`
-- `reports/part3_diagnostics_report.md`
-- `features/gr_features_train.csv`
-- `features/gr_features_test.csv`
-- `features/typewell_features_train.csv`
-- `features/typewell_features_test.csv`
-- `features/alignment_features_train.csv`
-- `features/alignment_features_test.csv`
-
-## 9. Part 4 当前提交链
-
-Part 4 的职责是把前面结果变成最终提交。当前真实链路是：
-
-```bash
-.venv/bin/python scripts/blend_predictions.py
-.venv/bin/python scripts/postprocess_predictions.py --variant balanced
-.venv/bin/python scripts/make_submission.py --variant balanced --output submission.csv
-```
-
-其中：
-
-- `scripts/blend_predictions.py` 生成三种提交候选
-- `scripts/postprocess_predictions.py` 做曲线平滑、clip 和诊断
-- `scripts/make_submission.py` 生成最终 `submission.csv`
-
-最终会得到：
-
-- `submissions/conservative_submission.csv`
-- `submissions/balanced_submission.csv`
-- `submissions/aggressive_submission.csv`
-- `submissions/balanced_postprocessed_submission.csv`
-- `submission.csv`
-
-## 10. 一条从零开始的推荐顺序
-
-如果你要从头跑一遍，按这个顺序：
-
-```bash
-.venv/bin/python scripts/run_eda.py
-.venv/bin/python scripts/evaluate_baseline_cv.py
-.venv/bin/python scripts/build_baseline_features.py
-.venv/bin/python scripts/build_geometry_features.py
-.venv/bin/python scripts/train_residual_model.py
+.venv/bin/python scripts/train_residual_model.py --spec geometry
+# optional: .venv/bin/python scripts/train_residual_model.py --spec xgb
 .venv/bin/python scripts/evaluate_model_cv.py
 .venv/bin/python scripts/evaluate_residual_multimask.py
 .venv/bin/python scripts/validate_part2_outputs.py
 .venv/bin/python scripts/build_part3_diagnostics.py
 .venv/bin/python scripts/build_part3_features.py
 .venv/bin/python scripts/blend_predictions.py
-.venv/bin/python scripts/postprocess_predictions.py --variant balanced
-.venv/bin/python scripts/make_submission.py --variant balanced --output submission.csv
+.venv/bin/python scripts/select_submission_candidate.py --dry-run
+.venv/bin/python scripts/make_submission.py --variant auto --output submission.csv
 ```
 
-如果你只是要最终提交，且前面的产物都已经存在，就只需要最后三步。
+如果你只想用已经存在的候选重新导出最终提交：
 
-## 11. 当前仓库的关键提醒
+```bash
+.venv/bin/python scripts/blend_predictions.py
+.venv/bin/python scripts/make_submission.py --variant auto --output submission.csv
+```
 
-- `data/raw/` 是唯一正式数据入口。
-- 旧的 Part 2 结果不要沿用，尤其不要把旧的 `reports/` 当新结果。
-- 可提交文件必须和 `sample_submission.csv` 对齐。
-- Kaggle Notebook 最终只应该承担轻量推理和提交导出，不应该把重训练塞回去。
-- `submission.csv` 生成后务必检查 `id` 顺序和行数。
+这条短路径要求前面的 baseline/residual/diagnostics 产物已经存在且来自同一次有效 run。
 
-## 12. 最后验收
+## 5. Step 1: Baseline Generation
 
-最终确认下面几项都对：
+当前已实现：
 
-- `submission.csv` 存在
-- 只有 `id,tvt` 两列
-- 行数和 `data/raw/sample_submission.csv` 一致
-- `id` 顺序完全一致
-- `tvt` 没有空值、`NaN` 或无穷值
+```bash
+.venv/bin/python scripts/build_baseline_features.py
+.venv/bin/python scripts/evaluate_baseline_cv.py
+```
 
+主要产物：
+
+```text
+outputs/baseline_predictions_train_hidden.csv
+outputs/baseline_predictions_test.csv
+features/baseline_features_train.csv
+features/baseline_features_test.csv
+features/residual_targets.csv
+reports/baseline_cv_report.md
+reports/residual_target_report.md
+```
+
+为什么要做：
+
+- baseline 是所有 correction 的锚点；
+- residual target 依赖 baseline；
+- final candidate 必须能和 baseline 比较。
+
+验证是否成功：
+
+- baseline OOF report 存在；
+- train hidden rows 有 truth 和 baseline；
+- test rows 和 sample submission 对齐；
+- `features/residual_targets.csv` 里有 `residual_target`。
+
+失败时回退：
+
+- 不继续训练 residual；
+- 先修数据路径、sample id、baseline feature。
+
+## 6. Step 2: Feature Build
+
+当前已实现：
+
+```bash
+.venv/bin/python scripts/build_geometry_features.py
+.venv/bin/python scripts/build_part3_diagnostics.py
+.venv/bin/python scripts/build_part3_features.py
+```
+
+当前产物：
+
+```text
+features/geometry_features_train.csv
+features/geometry_features_test.csv
+outputs/part3_diagnostics.csv
+features/gr_features_train.csv
+features/gr_features_test.csv
+features/typewell_features_train.csv
+features/typewell_features_test.csv
+features/alignment_features_train.csv
+features/alignment_features_test.csv
+reports/part3_diagnostics_report.md
+```
+
+当前状态说明：
+
+- geometry features 已用于当前 SGD residual；
+- Part 3 diagnostics 可用于 route / blend；
+- alignment features 还应被视为下一步增强输入，不要当成已验证强 correction。
+
+验证是否成功：
+
+- train/test feature 行数和目标行一致；
+- key 列 `well/split/row/id` 可对齐；
+- 没有关键特征整列缺失；
+- `outputs/part3_diagnostics.csv` 有 train/test route。
+
+## 7. Step 3: Residual Candidates
+
+### 7.1 当前已实现: SGD Residual
+
+命令：
+
+```bash
+.venv/bin/python scripts/train_residual_model.py --spec geometry
+```
+
+当前模型：
+
+```text
+StandardScaler + SGDRegressor
+```
+
+目标：
+
+```text
+residual_target = truth_tvt - baseline_tvt
+```
+
+输出：
+
+```text
+outputs/residual_geometry_oof.csv
+outputs/residual_geometry_cv_by_well.csv
+outputs/residual_geometry_test_predictions.csv
+submissions/geometry_residual_submission.csv
+reports/residual_geometry_cv_report.md
+```
+
+验证：
+
+- OOF RMSE 是否优于 baseline；
+- degraded wells 是否可控；
+- worst degradation 是否可接受；
+- per-well report 是否存在。
+
+失败时回退：
+
+- 回退 baseline；
+- 不进入 blend；
+- 检查特征缺失或数据版本混用。
+
+### 7.2 当前已实现: XGBoost/tree Residual 脚本支持
+
+脚本入口已经实现：
+
+```bash
+.venv/bin/python scripts/train_residual_model.py --spec xgb
+```
+
+当前本机 `.venv` 没有 `xgboost`，所以这条分支会自动 fallback 到：
+
+```text
+sklearn.ensemble.HistGradientBoostingRegressor
+```
+
+如果环境能 import `xgboost`，同一入口会使用：
+
+```text
+xgboost.XGBRegressor
+```
+
+目标仍然是：
+
+```text
+residual_target = truth_tvt - baseline_tvt
+```
+
+它不是替代整体框架，而是替换/增强 residual model。
+
+运行后输出：
+
+```text
+outputs/residual_xgb_oof.csv
+outputs/residual_xgb_cv_by_well.csv
+outputs/residual_xgb_test_predictions.csv
+submissions/xgb_residual_submission.csv
+reports/residual_xgb_cv_report.md
+models/residual_xgb_model.pkl
+models/residual_xgb_config.json
+```
+
+验证方式：
+
+- 与 SGD residual 使用同一套 GroupKFold；
+- 与 baseline、SGD 同表比较；
+- 不只看 public leaderboard；
+- 检查 per-well degraded 和 worst tail。
+
+失败时回退：
+
+- XGBoost 不如 SGD 就不进入最终候选；
+- 只在特定 route 改善时，作为 route-specific 或 aggressive candidate。
+
+### 7.3 下一步计划: Tree Residual 对照
+
+部分已实现。
+
+候选：
+
+- HistGradientBoosting residual：已作为 xgb fallback 接入；
+- LightGBM residual，如果环境允许；
+- Ridge / ElasticNet 作为线性 sanity check。
+
+统一要求：
+
+- 同一 residual target；
+- 同一 OOF split；
+- 同一评估表；
+- 有 test prediction；
+- 有回退逻辑。
+
+## 8. Step 4: Gated Residual
+
+当前状态：
+
+- 计划中；
+- 尚未作为独立候选完整实现；
+- 当前 blend 里有 route-aware 权重搜索，但这还不等同于完整 gater。
+
+目标公式：
+
+```text
+final_tvt = baseline_tvt + alpha * predicted_residual
+```
+
+输入可以包括：
+
+```text
+baseline_confidence
+target_length
+known_length
+baseline_slope_std
+predicted_residual_magnitude
+GR_missing_rate
+Part3_route
+alignment_confidence
+per_well_risk_score
+```
+
+输出应包括：
+
+```text
+alpha
+gated_residual
+final_tvt
+gater_reason
+```
+
+验证：
+
+- gated residual 是否优于 ungated residual；
+- baseline-good wells 是否少被修坏；
+- degraded wells 是否减少；
+- P95/P99 是否改善。
+
+失败时回退：
+
+- 回退 ungated SGD/XGBoost residual；
+- 或回退 baseline。
+
+## 9. Step 5: GR / Typewell Alignment Enhanced Residual
+
+当前状态：
+
+- Part 3 diagnostics / route 已有；
+- alignment features 的完整 correction 使用是计划中；
+- 不能把 alignment offset 写成已完成最终模型。
+
+计划目标：
+
+```text
+alignment features -> residual model
+alignment confidence -> gater
+alignment route -> candidate selection
+```
+
+关键字段：
+
+```text
+best_offset
+best_similarity
+second_best_similarity
+similarity_margin
+alignment_confidence
+alignment_support_fraction
+alignment_enabled_flag
+```
+
+验证：
+
+- high confidence alignment subset 是否改善；
+- best offset 方向是否和真实 residual 一致；
+- alignment 加入 residual/gater 后是否减少 worst wells；
+- OOF 不提升时不进入最终 correction。
+
+失败时回退：
+
+- 只保留 diagnostics / route；
+- 不使用 alignment direct correction；
+- final candidate 回退 residual 或 baseline。
+
+## 10. Step 6: Candidate OOF Evaluation
+
+当前已实现：
+
+```bash
+.venv/bin/python scripts/blend_predictions.py
+.venv/bin/python scripts/select_submission_candidate.py --dry-run
+```
+
+会生成：
+
+```text
+submissions/conservative_submission.csv
+submissions/balanced_submission.csv
+submissions/aggressive_submission.csv
+submissions/optimized_submission.csv
+outputs/blend_oof.csv
+outputs/ensemble_cv_summary.csv
+outputs/ensemble_route_weights.csv
+reports/ensemble_report.md
+reports/candidate_selection_report.md
+outputs/selected_candidate.json
+```
+
+当前候选包括：
+
+- baseline；
+- geometry residual；
+- xgb/tree residual，如果已经生成 OOF；
+- conservative；
+- balanced；
+- aggressive；
+- optimized。
+
+重要提醒：
+
+- 如果 OOF 显示 geometry residual 最优，就应该允许最终选择 geometry；
+- 不要因为 `balanced` 名字更像主力就默认选 balanced；
+- 没有 OOF 的候选不能进入正式 selection。
+
+下一步计划：
+
+- 把 gated / alignment-enhanced candidate 接入；
+- 把 candidate registry 从当前 JSON/report 扩展成正式 registry；
+- 增加更严格的 smoothness guard。
+
+## 11. Step 7: Candidate Selection
+
+当前已实现：
+
+```bash
+.venv/bin/python scripts/select_submission_candidate.py --dry-run
+.venv/bin/python scripts/make_submission.py --variant auto --output submission.csv
+```
+
+当前逻辑：
+
+- 读取 baseline、geometry、xgb/tree、blend 和 postprocess candidate；
+- 跳过缺 OOF、缺 submission 或 postprocess guard rejected 的候选；
+- 对 OOF 候选取共同 `id` 覆盖后再比较，避免不同覆盖范围混比；
+- 默认按 OOF RMSE 最低选择；
+- RMSE 很接近时，用 worst-well RMSE、degraded wells、P95 作为 tie breaker；
+- 写出 `submission.csv`；
+- 写出 `reports/candidate_selection_report.md` 和 `outputs/selected_candidate.json`；
+- 记录到 `reports/submission_log.md`。
+
+下一步计划：
+
+```text
+choose candidate with best validated OOF CV
+check per-well degradation
+check worst-well tail
+check smoothness
+then export final submission
+```
+
+失败时回退：
+
+- 如果没有 CV summary，不能自信选择；
+- 如果最优 candidate 风险过高，回退次优稳定候选；
+- 如果所有 candidate 不完整，回退 baseline 或当前 SGD residual。
+
+## 12. Step 8: Postprocess With Guard
+
+当前已实现：
+
+`make_submission.py` 默认 `--postprocess-policy auto`，会调用：
+
+```text
+scripts/postprocess_predictions.py
+```
+
+硬规则：
+
+```text
+if postprocess_rmse_after > postprocess_rmse_before:
+    reject postprocessed submission
+    use original candidate
+```
+
+`scripts/postprocess_predictions.py` 也支持：
+
+```bash
+--allow-worse
+--min-improvement 0.0
+```
+
+默认 `--min-improvement 0.0`，也就是至少不能让 OOF RMSE 变差。脚本会额外写出：
+
+```text
+outputs/postprocess_oof_summary.csv
+outputs/postprocess_oof_by_well.csv
+```
+
+当前报告已经证明 postprocess 可能变差：
+
+```text
+balanced OOF RMSE: 41.6539 -> 78.1925
+```
+
+所以不要用 `--postprocess-policy always` 或 `--allow-worse` 生成正式提交。
+
+验证：
+
+- 看 `reports/postprocess_report.md`；
+- 确认 `Decision` 是 accepted 还是 rejected；
+- 如果 rejected，最终文件应等价于原候选。
+
+失败时回退：
+
+- OOF 变差：自动回退；
+- OOF 覆盖不足：回退；
+- postprocess 只作为诊断，不作为最终能力宣传。
+
+## 13. Step 9: Final Submission Validation
+
+最终 `submission.csv` 必须满足：
+
+```text
+columns exactly: id,tvt
+row count equals sample_submission
+id order equals sample_submission
+no duplicated id
+no NaN / inf
+tvt numeric
+```
+
+当前 visible test 行数是 `14,151`，但正式检查应该以本地 `sample_submission.csv` 为准，不要把这个数字写死到代码里。
+
+如果需要单独验证，可用：
+
+```bash
+.venv/bin/python scripts/validate_submission.py --submission submission.csv
+```
+
+如果该脚本参数和当前实现不一致，以脚本 `--help` 为准。
+
+## 14. 完成优化后的推荐全流程
+
+当 gater / alignment-enhanced residual 也实现后，推荐全流程应是：
+
+```text
+1. data contract / EDA
+2. baseline generation
+3. baseline CV
+4. feature build
+5. residual candidates:
+   - SGD residual
+   - XGBoost residual if xgboost is available
+   - HistGradientBoosting residual fallback
+   - LightGBM residual if allowed
+   - gated residual
+   - GR/typewell alignment enhanced residual
+6. candidate OOF evaluation
+7. candidate selection
+8. postprocess with guard
+9. final submission export
+10. submission validation
+```
+
+推荐选择规则：
+
+```text
+valid_candidates = candidates with:
+  complete OOF
+  complete test prediction
+  no NaN / inf
+  acceptable per-well risk
+  acceptable worst-well tail
+  postprocess not worse if used
+
+selected = lowest OOF RMSE among valid_candidates
+```
+
+## 15. 交接时怎么说当前能力
+
+可以说：
+
+- 当前系统已经是 `baseline + residual correction`；
+- 当前 residual 是 SGD pipeline；
+- 当前 `scripts/train_residual_model.py --spec xgb` 已支持 XGBoost/tree residual，xgboost 不存在时 fallback 到 HistGradientBoosting；
+- 当前 `scripts/select_submission_candidate.py` 已实现候选选择，并按共同 OOF 覆盖比较；
+- 当前 Part 3 能提供 route / diagnostics；
+- 当前 Part 4 能生成多个候选并按 OOF 自动选；
+- 当前 postprocess 有 `--min-improvement` guard。
+
+不要说：
+
+- 已经完成 gater；
+- alignment correction 已经是主模型；
+- postprocess 一定提升；
+- balanced 一定是最终主力。
+
+## 16. 相关文档
+
+- [`../plans/00_overview.md`](../plans/00_overview.md)
+- [`../plans/02_residual_modeling.md`](../plans/02_residual_modeling.md)
+- [`../plans/03_gr_typewell_alignment.md`](../plans/03_gr_typewell_alignment.md)
+- [`../plans/04_ensemble_submission_ops.md`](../plans/04_ensemble_submission_ops.md)
+- [`GITHUB_RUN_GUIDE.md`](GITHUB_RUN_GUIDE.md)
+- [`part2_server_full_run_guide.md`](part2_server_full_run_guide.md)

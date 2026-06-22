@@ -1,321 +1,336 @@
-# ROGII 地质勘测预测总计划
+# ROGII 模型总计划
 
-## 0. 总目标
+这份文档是整个项目的总路线图。它不描述某一次临时提交，而是说明后续怎么把当前系统继续优化成更稳定、更容易冲榜的模型流程。
 
-本项目的目标不是做一个能跑通的 Kaggle baseline，而是做一个真正可实现、可验证、可解释、可持续迭代的水平井地质位置 TVT 预测工程系统，并以此冲击 leaderboard 第一名。
-
-核心任务：
-
-> 给定水平井轨迹、已知段 `TVT_input`、Gamma Ray 日志、垂直 typewell 参考井和地层标签，预测隐藏区间每一行的 `tvt`。
-
-核心路线：
+当前最重要的原则是：不要把问题改成直接预测绝对 TVT。我们的主框架保持为：
 
 ```text
-数据契约与质量检查
-  -> 真实 hidden interval 验证体系
-  -> TVT 连续性 baseline
-  -> baseline + residual 主干
-  -> GR 信号增强
-  -> typewell / GR 对齐增强
-  -> 多模型集成
-  -> 地质约束后处理
-  -> Kaggle notebook 提交系统
-  -> leaderboard 反馈闭环
-```
-
-最终要交付的不只是一个 `submission.csv`，而是一套可复现的工程流水线：
-
-- 可从 `data/raw/` 下的原始 Kaggle 数据开始运行；
-- 可生成 EDA 报告、CV 报告、failure analysis；
-- 可训练多个模型版本；
-- 可输出 conservative / balanced / aggressive 三类提交；
-- 可解释每次提交为什么可能提升，以及在哪里可能失败。
-
-## 1. 四个子计划
-
-| 阶段 | 子计划 | 目标 |
-|---|---|---|
-| Part 1 | [`01_validation_baseline.md`](01_validation_baseline.md) | 建立数据契约、CV 框架和可信 baseline |
-| Part 2 | [`02_residual_modeling.md`](02_residual_modeling.md) | 建立 baseline + residual 主干模型 |
-| Part 3 | [`03_gr_typewell_alignment.md`](03_gr_typewell_alignment.md) | 加入 GR 和 typewell 对齐地质信号 |
-| Part 4 | [`04_ensemble_submission_ops.md`](04_ensemble_submission_ops.md) | 集成、后处理、Notebook 工程化和冲榜运营 |
-
-## 2. 方法总判断
-
-### 2.1 为什么不直接黑盒预测 TVT
-
-直接用 tabular model 预测绝对 `TVT` 风险很高：
-
-- 不同井的绝对深度、轨迹、构造背景不同；
-- hidden wells 与 public visible test 的 3 口井不一致；
-- 模型可能记住训练井尺度和深度分布，而不是学地质规律；
-- 直接预测容易产生不连续、不合理的曲线。
-
-### 2.2 为什么采用 baseline + residual
-
-每口井都有已知段 `TVT_input`。这是最强的局部先验，表示该井当前地质位置的实际趋势。
-
-因此主方法应为：
-
-```text
-prediction = continuity_baseline + learned_residual
+final_tvt = baseline_tvt + correction
 ```
 
 其中：
 
-- `continuity_baseline` 捕捉每口井自身 TVT 的连续趋势；
-- `learned_residual` 学习外推失败的部分；
-- GR/typewell/轨迹特征都用于解释 residual，而不是从零预测绝对 TVT。
+- `baseline_tvt` 是每口井自己的 TVT 延续趋势；
+- `correction` 是模型学到的修正量；
+- 所有新模型都应该增强 `correction`、控制 `correction` 或帮助判断 `correction` 是否可信。
 
-工程优势：
+## 1. 任务是什么
 
-- 稳定，baseline 可独立提交；
-- 可解释，残差代表“地质偏移修正”；
-- 防过拟合，模型只学 correction；
-- 可分层增强，GR/typewell 可逐步加入；
-- 可回退，复杂模型失效时仍可使用 baseline 或 conservative blend。
+Kaggle ROGII Wellbore Geology Prediction 要求根据水平井轨迹、已知段 `TVT_input`、Gamma Ray 日志和 typewell 参考井，预测测试井 hidden rows 的 `tvt`。
 
-### 2.3 冲第一的核心矛盾
+初学者可以这样理解：
 
-单纯外推很稳，但遇到地层变化、断层、GR 形态变化时会弱。
+1. 每口井前半段有已知 TVT，后半段要预测。
+2. baseline 先根据这口井前半段的趋势往后延伸。
+3. residual model 再学习 baseline 通常会错在哪里。
+4. GR/typewell alignment 提供地质证据，帮助判断修正方向是否可信。
+5. 最终提交只能来自经过 OOF CV 验证的候选。
 
-冲第一的关键不是把模型做复杂，而是解决：
+## 2. 当前仓库事实
 
-- hidden interval 里地层是否发生偏移；
-- 水平井 GR 和 typewell GR 如何对齐；
-- residual 修正什么时候可信；
-- 什么时候应该保守回退到 baseline；
-- local CV 与 Kaggle hidden set 是否一致。
+下面是当前代码和报告支持的事实，后续文档都以这个口径为准。
 
-## 3. 项目约束与原则
-
-### 3.1 工程约束
-
-- 最终 Kaggle 提交必须在 Notebook 环境运行；
-- 提交环境关闭 internet；
-- CPU/GPU 运行时间均不超过 9 小时；
-- 输出文件必须为 `submission.csv`；
-- 原始数据不进 git；
-- 代码必须能从 `data/raw/` 下的 `train/` 和 `test/` 开始复现。
-
-### 3.2 防过拟合原则
-
-严禁：
-
-- 只根据 public visible test 的 3 口井判断方法好坏；
-- 使用同一口井的信息泄漏到验证目标；
-- 只看整体 RMSE，不看 worst wells；
-- 模型只在少数简单井提升，却让困难井爆炸；
-- 每次 leaderboard 失败后盲目调参。
-
-必须：
-
-- 建立训练井隐藏段 CV；
-- 每个模型和 baseline 比；
-- 记录每次提交的本地 CV、特征、假设、LB 结果；
-- 使用 per-well metrics 和 failure analysis；
-- 对模型输出做曲线稳定性检查。
-
-## 4. 数据理解与数据契约
-
-### 4.1 原始数据结构
-
-当前数据目录：
-
-```text
-data/
-`-- raw/
-    |-- train/
-    |-- test/
-    |-- sample_submission.csv
-    `-- AI_wellbore_geology_prediction_task_en.pptx
-```
-
-已确认：
-
-- 训练井：773 口；
-- 每口训练井包含：
-  - `{well}__horizontal_well.csv`
-  - `{well}__typewell.csv`
-  - `{well}.png`
-- visible test：3 口样例井；
-- sample submission：14151 行；
-- Kaggle hidden rerun 会替换 visible test。
-
-### 4.2 horizontal well 数据契约
-
-训练 horizontal 文件包含：
-
-- `MD`, `X`, `Y`, `Z`
-- `ANCC`, `ASTNU`, `ASTNL`, `EGFDU`, `EGFDL`, `BUDA`
-- `TVT`, `GR`, `TVT_input`
-
-测试 horizontal 文件包含：
-
-- `MD`, `X`, `Y`, `Z`, `GR`, `TVT_input`
-
-### 4.3 typewell 数据契约
-
-typewell 文件包含：
-
-- `TVT`
-- `GR`
-- `Geology` 仅训练集可见；测试集 typewell 只有 `TVT` 和 `GR`
-
-### 4.4 submission 契约
-
-```text
-id,tvt
-000d7d20_1442,11747.38
-...
-```
-
-`id` 格式：
-
-```text
-{well}_{row_index}
-```
-
-## 5. 验证体系设计
-
-验证体系是冲榜核心。没有可信 CV，就会变成猜 leaderboard。
-
-### 5.1 CV Level 1: 原始训练隐藏段验证
-
-训练井自身已经有：
-
-- `TVT_input` 缺失段；
-- 完整 `TVT` 真值。
-
-因此第一层验证直接使用：
-
-```text
-target_rows = rows where TVT_input is NaN
-truth = TVT[target_rows]
-```
-
-优点：
-
-- 与 Kaggle 预测任务结构一致；
-- 无需人工造 mask；
-- 覆盖 773 口井；
-- 是当前最重要的 baseline control。
-
-### 5.2 CV Level 2: 多 mask 验证
-
-hidden test 的缺失区间可能与训练默认缺失模式不同，所以需要多 mask。
-
-mask 类型：
-
-| Mask | 目的 |
+| 模块 | 当前真实状态 |
 |---|---|
-| trailing-short | 模拟短隐藏尾段 |
-| trailing-long | 模拟长隐藏尾段 |
-| mid-section | 模拟中间缺失 |
-| random-contiguous | 防止模型只适配尾段 |
-| high-GR-missing | 测 GR 缺失鲁棒性 |
-| formation-transition | 专门测地层变化处 |
+| 主框架 | `baseline + residual correction` |
+| baseline | 已能生成 train hidden OOF 和 test submission |
+| Part 2 residual | 当前实际模型是 `StandardScaler + SGDRegressor` |
+| XGBoost | 尚未实现，是下一步 planned residual candidate |
+| residual target | `residual_target = truth_tvt - baseline_tvt` |
+| Part 3 | 当前主要是 diagnostics / route，不是强 correction |
+| Part 4 | 已有 candidate / blend / auto selection 雏形，但计划需要更严格 |
+| postprocess | 已有 OOF guard 代码；报告显示无保护后处理会显著变差 |
 
-每种 mask 要记录：
+当前报告里的关键信号：
 
-- well ID；
-- mask 起点、终点；
-- mask 长度；
-- GR 缺失率；
-- TVT slope/curvature；
-- typewell Geology 覆盖；
-- baseline RMSE；
-- model RMSE。
+- `reports/residual_geometry_cv_report.md`：baseline RMSE `119.933`，geometry residual RMSE `16.1024`。
+- 同一报告显示 `633` 口井改善、`140` 口井退化，说明 residual 很有价值，但不能无条件全信。
+- `reports/ensemble_report.md`：geometry residual RMSE `16.0862`，balanced RMSE `41.6539`，aggressive RMSE `59.3856`，说明“听起来更复杂”的 blend 不一定更好。
+- `reports/postprocess_report.md`：balanced 后处理 OOF RMSE 从 `41.6539` 变差到 `78.1925`，说明 postprocess 必须有硬保护。
+- `reports/part3_diagnostics_report.md`：Part 3 当前主要输出 route，test 侧当前全部路由到 `gr_residual`。
 
-补强原则：
+## 3. 为什么不直接预测绝对 TVT
 
-- mask 后面的 `TVT_input` 不得被泄漏进特征；
-- row-level RMSE 和 per-well RMSE 要同时看；
-- 再加一个简单的 group split，把相邻井尽量分到不同 fold，避免邻井泄漏把 CV 抬高。
+直接训练一个模型输出 `tvt` 看起来简单，但这里风险很高：
 
-### 5.3 CV Level 3: Group / Fold 验证
+- 不同井的绝对 TVT 尺度不同，直接跨井学习容易泛化失败；
+- Kaggle hidden rerun 可能换掉 visible test，不能靠记住公开 3 口井；
+- 直接预测容易生成不连续、不符合井内趋势的曲线；
+- 模型错了以后，不容易判断该回退到哪里。
 
-为了评估跨井泛化：
-
-- 按 well 分组；
-- 不让同一口井同时出现在 train 和 validation；
-- 使用 5-fold 或 repeated group split；
-- 同时保留 train-hidden-row validation。
-
-注意：
-
-Residual 模型训练时可以使用一口井已知段的信息生成 baseline 和特征，但不能偷看该井隐藏段真值。
-
-### 5.4 指标体系
-
-不能只看 overall RMSE。
-
-必须报告：
-
-- overall RMSE；
-- per-well RMSE mean/median/P95；
-- worst 20 wells；
-- RMSE by hidden length；
-- RMSE by GR missing rate；
-- RMSE by baseline error bucket；
-- residual bias；
-- max absolute error；
-- 曲线跳变次数。
-
-## 6. 四个阶段
-
-### Part 1: Continuity Baseline
-
-建立稳定、可解释、可提交的控制组。
-
-方法：
-
-1. 找到 `TVT_input` 已知行；
-2. 在 `MD` 方向拟合局部趋势；
-3. 用尾段 `dTVT/dMD` 中位数外推隐藏区间；
-4. 对左右越界做边界外推；
-5. 生成 `id,tvt`。
-
-### Part 2: Geometry Residual Model
-
-在 baseline 上学习几何和轨迹带来的偏移。
-
-目标变量：
+所以我们保留 baseline 作为锚点：
 
 ```text
-residual = TVT - baseline_TVT
+baseline_tvt = use known TVT_input segment to extend this well
+residual_target = truth_tvt - baseline_tvt
+predicted_residual = model(features)
+final_tvt = baseline_tvt + predicted_residual
 ```
 
-重点是让模型稳定修正 baseline 的系统性错误。
+这样做的好处是：
 
-### Part 3: GR Residual Model
+- baseline 是一个稳定控制组；
+- residual 的含义清楚，就是“baseline 错了多少”；
+- correction 可以被 clip、gater、route 和 postprocess 控制；
+- 复杂模型失败时，可以回退 baseline 或降低 correction 权重。
 
-引入岩性响应信号，解决单纯外推在地层变化处弱的问题。
+## 4. 四个阶段的关系
 
-重点判断：
+| 阶段 | 文档 | 作用 |
+|---|---|---|
+| Part 1 | [`01_validation_baseline.md`](01_validation_baseline.md) | 建数据契约、CV 和 baseline |
+| Part 2 | [`02_residual_modeling.md`](02_residual_modeling.md) | 学习 residual correction，当前 SGD，下一步 XGBoost/tree |
+| Part 3 | [`03_gr_typewell_alignment.md`](03_gr_typewell_alignment.md) | 把 GR/typewell 做成 alignment features、route 和 gater 信号 |
+| Part 4 | [`04_ensemble_submission_ops.md`](04_ensemble_submission_ops.md) | 生成候选、OOF 选择、postprocess guard、导出 submission |
 
-- GR 很差时只允许弱修正；
-- GR 好且 baseline 误差大的井，才给 GR 更高优先级。
+整体流向：
 
-### Part 4: Typewell / GR 对齐
+```text
+data contract / EDA
+  -> baseline generation
+  -> baseline CV
+  -> feature build
+  -> residual candidates
+  -> gater / route
+  -> candidate OOF evaluation
+  -> automatic selection
+  -> guarded postprocess
+  -> final submission
+```
 
-把水平井 GR 和垂直参考井 GR 对齐，识别层位偏移。
+## 5. Baseline 的角色
 
-核心思想：
+Baseline 解决的是“这口井自己原本的 TVT 趋势是什么”。
 
-- 先用 baseline 给出一个“差不多对”的 TVT；
-- 再去 typewell 里找最像的那一段；
-- 如果像得很明显，就把这个偏移当成修正；
-- 如果不像，就不要硬修，直接回退。
+输入：
 
-## 7. 项目状态说明
+- `TVT_input` 已知段；
+- `MD/X/Y/Z` 轨迹；
+- target rows 的位置。
 
-当前仓库已经具备：
+输出：
 
-- Part 1 的数据契约、baseline CV 和多 mask 设计；
-- Part 2 的 residual 设计文档与服务器复跑手册；
-- Part 3 的 GR / typewell 路线；
-- Part 4 的集成、后处理与 Notebook 工程化框架。
+- `baseline_tvt`；
+- baseline OOF metrics；
+- baseline test prediction。
 
-但其中一部分 Part 2 的旧结果已经被主动清理，新的最终结果应以服务器 full-row 复跑后的产物为准。
+它能解决：
 
+- 已知段到 hidden 段的基本连续趋势；
+- 每口井自己的局部尺度；
+- residual target 的参考基准。
+
+它不能解决：
+
+- 地层发生偏移；
+- GR 形态提示 hidden 段已经换层；
+- typewell 显示 baseline TVT 附近并不是最相似层位；
+- 长 hidden interval 中后段的系统性漂移。
+
+验证方式：
+
+- 训练井 hidden rows OOF RMSE；
+- per-well RMSE；
+- P95/P99 error；
+- worst wells；
+- 多 mask 压力测试。
+
+失败时怎么回退：
+
+- baseline 本身就是全系统的安全回退；
+- 后续任何 correction 如果没有通过 OOF 验证，都不能覆盖 baseline。
+
+## 6. Residual Correction 的角色
+
+Residual model 解决的是“baseline 往后延伸以后，通常会错多少”。
+
+固定目标：
+
+```text
+residual_target = truth_tvt - baseline_tvt
+```
+
+当前已实现：
+
+- `scripts/train_residual_model.py` 使用 `StandardScaler + SGDRegressor`；
+- 支持 `geometry`、`gr`、`typewell` 三类 `ModelSpec`；
+- 使用 `GroupKFold` 按 well 做 OOF；
+- 输出 `final_pred = baseline_tvt + oof_residual_pred`。
+
+下一步计划：
+
+- 增加 XGBoost residual；
+- 增加 HistGradientBoosting residual；
+- 如果环境允许，再增加 LightGBM residual；
+- 所有模型使用同一套 residual target、GroupKFold 和 per-well CV 比较。
+
+为什么要这样做：
+
+- SGD 是可靠、轻量、可运行的 residual control；
+- XGBoost/tree model 更适合学习非线性特征交互；
+- 只有同一套 OOF 比较，才能知道提升来自模型本身，不是来自验证口径差异。
+
+失败时怎么回退：
+
+- 如果新模型不如 SGD，就保留 SGD；
+- 如果整体 RMSE 好但退化井变多，就只能作为 aggressive candidate；
+- 如果对 baseline-good wells 修坏太多，就必须交给 gater 降权。
+
+## 7. Gated Correction 的角色
+
+当前最大的风险不是“没有 correction”，而是“correction 在某些井上修过头”。
+
+因此下一步要引入 gater：
+
+```text
+final_tvt = baseline_tvt + alpha * predicted_residual
+```
+
+`alpha` 表示这一口井或这一段要信多少 correction：
+
+- `alpha = 0`：完全回退 baseline；
+- `alpha = 1`：完全使用 residual；
+- `0 < alpha < 1`：保守修正。
+
+gater 可以是：
+
+- 第一版手工规则或 alpha grid；
+- tree-based gater；
+- route confidence；
+- OOF 学出来的 per-well 风险规则。
+
+输入特征可以包括：
+
+- baseline confidence；
+- target length；
+- known length；
+- baseline slope std；
+- predicted residual magnitude；
+- GR missing rate；
+- Part 3 route；
+- alignment confidence；
+- per-well risk score。
+
+验证方式：
+
+- gated residual 是否优于 ungated residual；
+- baseline-good wells 的退化是否减少；
+- worst degradation 是否下降；
+- long target wells 是否仍有提升；
+- P95/P99 abs error 是否改善。
+
+失败时怎么回退：
+
+- tree gater 不稳时，用固定 alpha grid；
+- 固定 alpha 仍不稳时，回退 SGD residual 或 baseline。
+
+## 8. GR / Typewell Alignment 的角色
+
+Part 3 的目标不是单独生成最终 TVT，而是提供地质证据。
+
+当前已实现：
+
+- GR quality；
+- baseline confidence；
+- typewell quality；
+- risk score；
+- route suggestion。
+
+下一步计划：
+
+- horizontal GR self-alignment；
+- horizontal GR vs typewell GR alignment；
+- `best_offset`；
+- `best_similarity`；
+- `second_best_similarity`；
+- `similarity_margin`；
+- `alignment_confidence`；
+- `alignment_support_fraction`；
+- `alignment_enabled_flag`。
+
+这些结果不能直接覆盖 baseline，只能用于：
+
+- residual model 的输入特征；
+- gater 的输入；
+- route/confidence 的依据；
+- failure analysis。
+
+为什么要谨慎：
+
+- GR 曲线相似不代表 TVT offset 一定方向正确；
+- typewell 可能局部噪声大；
+- alignment 在可视化上可能合理，但 OOF 上会修坏井。
+
+验证方式：
+
+- high confidence alignment subset 是否更准；
+- `best_offset` 的符号是否和真实 residual 方向一致；
+- 加入 alignment 特征后 residual OOF 是否改善；
+- worst wells 是否减少。
+
+失败时怎么回退：
+
+- confidence 低时禁用 alignment correction；
+- 只保留 route diagnostic；
+- 不允许 alignment 单独生成 final submission。
+
+## 9. Candidate Selection 和 Postprocess
+
+最终提交不能靠手工喜欢某个名字，比如固定 `balanced`。正确流程应该是：
+
+```text
+candidate models:
+  baseline
+  SGD residual
+  XGBoost residual planned
+  HistGradientBoosting residual planned
+  gated residual planned
+  GR/typewell alignment enhanced residual planned
+  blend candidates
+
+selection:
+  choose candidate with best validated OOF CV
+  check per-well degradation
+  check worst-well tail
+  check smoothness
+  then export final submission
+```
+
+postprocess 也只能作为候选变换：
+
+```text
+if postprocess_rmse_after > postprocess_rmse_before:
+    reject postprocessed submission
+    use original candidate
+```
+
+当前 `scripts/postprocess_predictions.py` 已有这类 guard 逻辑；文档和操作流程必须把它作为硬规则，而不是可选项。
+
+## 10. 后续推荐顺序
+
+1. 固化当前 SGD residual 作为 residual control。
+2. 实现 XGBoost residual，并和 SGD 用同一套 GroupKFold OOF 比较。
+3. 增加 HistGradientBoosting residual，作为 sklearn tree baseline。
+4. 实现第一版 alpha grid / rule-based gater。
+5. 把 Part 3 alignment 特征接入 residual / gater，而不是直接改 final TVT。
+6. 扩展 `blend_predictions.py`，把所有候选统一写入 OOF summary。
+7. 强化 `make_submission.py --variant auto`，只导出 OOF 最优且通过 guard 的候选。
+8. 最后再做 Kaggle Notebook 化和 leaderboard 提交闭环。
+
+## 11. 最低验收原则
+
+任何新模型想进入最终候选池，必须满足：
+
+- 有 OOF prediction；
+- 有 per-well metrics；
+- 和 baseline、SGD residual 在同一套 CV 下比较；
+- 不能只看 public leaderboard；
+- 不能只看 overall RMSE；
+- 要检查 degraded wells、worst wells、P95/P99；
+- postprocess 后如果 OOF 变差，不能使用后处理版本。
+
+一句话总结：
+
+```text
+baseline 是锚点，residual 是修正，gater 决定信多少，alignment 提供证据，OOF CV 决定最终提交。
+```

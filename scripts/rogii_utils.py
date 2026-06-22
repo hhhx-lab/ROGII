@@ -9,9 +9,11 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 
+from data_paths import resolve_competition_root
+
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT / "data" / "raw"
+DATA_DIR = resolve_competition_root()
 TRAIN_DIR = DATA_DIR / "train"
 TEST_DIR = DATA_DIR / "test"
 OUTPUT_DIR = ROOT / "outputs"

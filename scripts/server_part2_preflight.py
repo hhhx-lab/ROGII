@@ -12,11 +12,10 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from data_paths import load_sample_submission, resolve_competition_root
+
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_RAW = ROOT / "data" / "raw"
-TRAIN_DIR = DATA_RAW / "train"
-TEST_DIR = DATA_RAW / "test"
 REPORT_PATH = ROOT / "reports" / "server_part2_preflight_report.md"
 
 REQUIRED_PACKAGES = {
@@ -87,18 +86,27 @@ def package_status() -> list[dict[str, object]]:
 
 
 def data_status() -> list[dict[str, object]]:
-    train_horizontal = sorted(TRAIN_DIR.glob("*__horizontal_well.csv")) if TRAIN_DIR.exists() else []
-    test_horizontal = sorted(TEST_DIR.glob("*__horizontal_well.csv")) if TEST_DIR.exists() else []
-    sample_rows = count_lines(DATA_RAW / "sample_submission.csv")
+    data_root = resolve_competition_root()
+    train_dir = data_root / "train"
+    test_dir = data_root / "test"
+    train_horizontal = sorted(train_dir.glob("*__horizontal_well.csv")) if train_dir.exists() else []
+    test_horizontal = sorted(test_dir.glob("*__horizontal_well.csv")) if test_dir.exists() else []
+    try:
+        sample_rows = len(load_sample_submission())
+        sample_status = True
+    except Exception:
+        sample_rows = 0
+        sample_status = False
+    pptx_exists = any((candidate / "AI_wellbore_geology_prediction_task_en.pptx").exists() for candidate in [data_root, ROOT / "data", ROOT / "data" / "raw"])
     return [
-        check(DATA_RAW.exists(), "data/raw directory exists", str(DATA_RAW), critical=True),
-        check(TRAIN_DIR.exists(), "data/raw/train directory exists", str(TRAIN_DIR), critical=True),
-        check(TEST_DIR.exists(), "data/raw/test directory exists", str(TEST_DIR), critical=True),
-        check((DATA_RAW / "sample_submission.csv").exists(), "sample_submission.csv exists", critical=True),
-        check((DATA_RAW / "AI_wellbore_geology_prediction_task_en.pptx").exists(), "task PPTX exists", critical=False),
+        check(data_root.exists(), "competition data root exists", str(data_root), critical=True),
+        check(train_dir.exists(), "train directory exists", str(train_dir), critical=True),
+        check(test_dir.exists(), "test directory exists", str(test_dir), critical=True),
+        check(sample_status, "sample submission is loadable or synthesizable", f"rows={sample_rows}", critical=True),
+        check(pptx_exists, "task PPTX exists", critical=False),
         check(len(train_horizontal) == 773, "train horizontal well file count is 773", str(len(train_horizontal)), critical=True),
         check(len(test_horizontal) == 3, "test horizontal well file count is 3", str(len(test_horizontal)), critical=True),
-        check(sample_rows == 14151, "sample_submission row count is 14151", str(sample_rows), critical=True),
+        check(sample_rows == 14151, "sample submission row count is 14151", str(sample_rows), critical=False),
     ]
 
 

@@ -16,37 +16,92 @@
 - 本手册全程只用项目里的 `.venv`，不要再混用 Conda、系统 Python、Homebrew Python 或 `sudo pip`。
 - 这次的“旧结果清理”是为了避免把以前的 `models/`、`outputs/`、`reports/` 误当成当前结果。
 
-## 0. 先删旧结果
+## 0. 先归档旧结果，不要直接删除
 
-如果你本地工作区里还残留 Part 2 旧产物，先删掉或移走，再开始新跑。旧产物主要包括：
+如果你本地工作区里还残留 Part 2 或 full run 旧产物，先移动到 `archive/`，再开始新跑。不要用 `rm` 或 `find ... -delete` 直接删旧结果，因为后面可能需要恢复、对比或排查。
+
+推荐归档目录：
 
 ```text
-models/residual_geometry*
-outputs/residual_geometry*
-submissions/geometry_residual*
-reports/residual_geometry*
-reports/part2_completion_audit.md
-features/*.parquet
-packages/part2_server_outputs_*.tar.gz
-packages/part2_server_outputs_*.tar.gz.sha256
-server_results/part2_full/
+archive/runs/YYYYMMDD_HHMMSS_pre_full_run_cleanup/
 ```
 
-可以直接在本地项目根目录执行：
+旧产物主要包括：
+
+```text
+features/*.csv
+features/*.parquet
+outputs/*.csv
+outputs/*.json
+submissions/*.csv
+submission.csv
+reports/candidate_selection_report.md
+reports/postprocess_report.md
+reports/ensemble_report.md
+reports/residual_*_report.md
+reports/full_inference_run_summary.md
+reports/full_inference_run_summary.json
+reports/part2_completion_audit.md
+reports/submission_log.md
+reports/step_time_log.md
+reports/figures/residual_geometry_*/
+```
+
+不要移动这些东西：
+
+```text
+data/train
+data/test
+data/raw
+.venv
+scripts
+docs
+README.md
+requirements.txt
+.git
+.gitignore
+features/README.md
+features/.gitkeep
+outputs/README.md
+outputs/.gitkeep
+submissions/README.md
+```
+
+推荐流程：
+
+1. 先看状态：
 
 ```bash
-find models -maxdepth 1 -type f \( -name 'residual_geometry*' -o -name 'residual_geometry_hgb*' \) -delete
-find outputs -maxdepth 1 -type f -name 'residual_geometry*' -delete
-find submissions -maxdepth 1 -type f -name 'geometry_residual*' -delete
-find reports -maxdepth 1 -type f -name 'residual_geometry*' -delete
-find reports -maxdepth 1 -type f -name 'part2_completion_audit.md' -delete
-rm -rf reports/figures/residual_geometry_best_improved reports/figures/residual_geometry_worst_degraded
-find features -maxdepth 1 -type f -name '*.parquet' -delete
-rm -f packages/part2_server_outputs_*.tar.gz packages/part2_server_outputs_*.tar.gz.sha256
-rm -rf server_results/part2_full
+git status --short --branch
+du -sh data features outputs submissions reports .venv 2>/dev/null
+git status --short --ignored
 ```
 
-不要删除 `data/raw/`。那是原始比赛数据，不是旧结果。
+2. 建归档目录并移动旧产物，保持相对路径结构：
+
+```bash
+mkdir -p archive/runs/<timestamp>_pre_full_run_cleanup
+```
+
+3. 写 `cleanup_manifest.json` 和 `cleanup_manifest.md`，记录移动了什么、总大小、git branch、HEAD commit 和恢复命令。
+
+4. 清理后确认占位文件和原始数据还在：
+
+```bash
+find features -maxdepth 1 -type f | sort
+find outputs -maxdepth 1 -type f | sort
+find submissions -maxdepth 1 -type f | sort
+test -d data/train
+test -d data/test
+```
+
+恢复方式：
+
+```bash
+rsync -av archive/runs/<run_id>/ ./
+```
+
+完整规则见 [`FULL_INFERENCE_GUIDE.md`](FULL_INFERENCE_GUIDE.md) 的“训练前清理 / 旧产物归档规则”。
 
 ## 1. 服务器上要准备什么
 
@@ -143,7 +198,15 @@ python --version
 
 ## 5. 把数据传到服务器
 
-推荐从本地直接传 `data/raw/`。本地另开一个终端，执行：
+推荐从本地直接传当前使用的数据目录。新口径优先支持：
+
+```text
+data/train/
+data/test/
+data/sample_submission.csv   # 可选；缺失时脚本会从 test hidden rows 合成 id
+```
+
+旧布局 `data/raw/train` / `data/raw/test` 仍然兼容。下面以旧布局为例，本地另开一个终端，执行：
 
 ```bash
 rsync -avP "data/raw/" <用户名>@<服务器地址>:/home/<用户名>/projects/ROGII/data/raw/
@@ -168,8 +231,8 @@ scp -r "data/raw" <用户名>@<服务器地址>:/home/<用户名>/projects/ROGII
 ```text
 data/raw/train/
 data/raw/test/
-data/raw/sample_submission.csv
-data/raw/AI_wellbore_geology_prediction_task_en.pptx
+data/raw/sample_submission.csv                  # 可选
+data/raw/AI_wellbore_geology_prediction_task_en.pptx  # 可选
 ```
 
 ## 6. 先做预检

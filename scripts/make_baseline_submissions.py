@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import pandas as pd
 
+from data_paths import load_sample_submission
 from rogii_utils import (
     BASELINE_CONFIGS,
-    DATA_DIR,
     REPORT_DIR,
     ROOT,
     SUBMISSION_DIR,
@@ -33,7 +33,7 @@ def main() -> int:
     data_version = assert_data_contract_ready()
     data_hash = data_hash_short(data_version)
 
-    sample = pd.read_csv(DATA_DIR / "sample_submission.csv")
+    sample = load_sample_submission()
     parsed = parse_submission_ids(sample)
     diagnostics = []
 

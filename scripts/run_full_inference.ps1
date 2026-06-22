@@ -98,9 +98,14 @@ function Ensure-DataRaw {
     $repoData = Join-Path $Root "data"
     $repoRaw = Join-Path $repoData "raw"
 
+    if ((Test-Path (Join-Path $repoData "train")) -and
+        (Test-Path (Join-Path $repoData "test"))) {
+        Write-RunMessage "Using data at $(Convert-ToRelativePath $repoData)"
+        return
+    }
+
     if ((Test-Path (Join-Path $repoRaw "train")) -and
-        (Test-Path (Join-Path $repoRaw "test")) -and
-        (Test-Path (Join-Path $repoRaw "sample_submission.csv"))) {
+        (Test-Path (Join-Path $repoRaw "test"))) {
         Write-RunMessage "Using data at $(Convert-ToRelativePath $repoRaw)"
         return
     }
@@ -111,7 +116,7 @@ function Ensure-DataRaw {
     }
 
     $targetRaw = $parentRaw.Path
-    foreach ($required in @("train", "test", "sample_submission.csv")) {
+    foreach ($required in @("train", "test")) {
         if (-not (Test-Path (Join-Path $targetRaw $required))) {
             throw "Data candidate is missing ${required}: $targetRaw"
         }

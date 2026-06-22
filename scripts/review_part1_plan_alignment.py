@@ -4,7 +4,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from rogii_utils import DATA_DIR, REPORT_DIR, ROOT, SUBMISSION_DIR, TEST_DIR, TRAIN_DIR, parse_submission_ids, train_wells
+from data_paths import load_sample_submission
+from rogii_utils import REPORT_DIR, ROOT, SUBMISSION_DIR, TEST_DIR, TRAIN_DIR, parse_submission_ids, train_wells
 
 
 REPORT_PATH = REPORT_DIR / "part1_plan_implementation_review.md"
@@ -71,7 +72,7 @@ def exists_evidence(item: str) -> bool:
 
 def raw_data_checks() -> list[dict[str, object]]:
     checks: list[dict[str, object]] = []
-    sample = pd.read_csv(DATA_DIR / "sample_submission.csv")
+    sample = load_sample_submission()
     parsed = parse_submission_ids(sample)
     train_ids = set(train_wells())
     test_ids = {path.name.replace("__horizontal_well.csv", "") for path in TEST_DIR.glob("*__horizontal_well.csv")}

@@ -1,6 +1,7 @@
 .venv/
 .playwright-mcp/
 .codex/
+archive/
 __pycache__/
 .DS_Store
 data/*
@@ -15,6 +16,8 @@ outputs/*
 !outputs/part3_diagnostics.csv
 !outputs/postprocess_diagnostics.csv
 !outputs/residual_geometry_cv_by_well.csv
+!outputs/ensemble_cv_summary.csv
+!outputs/ensemble_route_weights.csv
 !outputs/submission_manifest.json
 features/*
 !features/.gitkeep
@@ -43,3 +46,5 @@ submissions/*.csv
 !submissions/balanced_submission.csv
 !submissions/conservative_submission.csv
 !submissions/geometry_residual_submission.csv
+!submissions/optimized_submission.csv
+!submissions/optimized_postprocessed_submission.csv

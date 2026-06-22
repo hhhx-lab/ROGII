@@ -5,11 +5,13 @@ from pathlib import Path
 
 import pandas as pd
 
+from data_paths import load_sample_submission
 from rogii_utils import (
     OUTPUT_DIR,
     REPORT_DIR,
     ROOT,
     SUBMISSION_DIR,
+    TEST_DIR,
     TRAIN_DIR,
     apply_cv_split_mask,
     assert_data_contract_ready,
@@ -281,12 +283,12 @@ def main() -> int:
         }
     )
 
-    sample = pd.read_csv(ROOT / "data" / "raw" / "sample_submission.csv")
+    sample = load_sample_submission()
     parsed_sample = parse_submission_ids(sample)
     sample_wells = set(parsed_sample["well"])
     train_well_ids = {path.name.replace("__horizontal_well.csv", "") for path in TRAIN_DIR.glob("*__horizontal_well.csv")}
     test_typewell_has_no_geology = all(
-        "Geology" not in pd.read_csv(ROOT / "data" / "raw" / "test" / f"{well}__typewell.csv", nrows=0).columns
+        "Geology" not in pd.read_csv(TEST_DIR / f"{well}__typewell.csv", nrows=0).columns
         for well in sample_wells
     )
     checks.append(
