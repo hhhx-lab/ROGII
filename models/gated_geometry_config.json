@@ -2,6 +2,11 @@
   "model_name": "gated_geometry",
   "model_family": "gater",
   "model_backend": "per_well_alpha_grid",
+  "candidate_type": "oracle_gated_residual",
+  "oracle_candidate": true,
+  "diagnostic_only": true,
+  "eligible_for_auto_submission": false,
+  "eligibility_reason": "per-well alpha is selected using the same well truth; use learned_gated_geometry for auto submission",
   "data_hash": "unknown",
   "alpha_grid": [
     0.0,

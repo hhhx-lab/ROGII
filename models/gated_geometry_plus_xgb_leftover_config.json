@@ -2,6 +2,11 @@
   "model_name": "gated_geometry_plus_xgb_leftover",
   "model_family": "gated_stack",
   "model_backend": "per_well_alpha_grid",
+  "candidate_type": "oracle_gated_stack",
+  "oracle_candidate": true,
+  "diagnostic_only": true,
+  "eligible_for_auto_submission": false,
+  "eligibility_reason": "stack reuses per-well oracle alpha from gated_geometry; use learned_gated_geometry or another validated candidate for auto submission",
   "data_hash": "unknown",
   "formula": "baseline + alpha * (geometry_residual + xgb_leftover_residual)",
   "metrics": {

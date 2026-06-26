@@ -1,6 +1,11 @@
 # Gated Geometry CV Report
 
 - Model: `per_well_alpha_grid`
+- Candidate type: `oracle_gated_residual`
+- Eligible for auto submission: `False`
+
+Important: this candidate searches alpha using each training well's own truth, then reports OOF on the same well. Treat it as a diagnostic upper bound, not as a validated leaderboard candidate. Use `learned_gated_geometry` for auto submission.
+
 - Data hash: `unknown`
 - Alpha grid: `[0.0, 0.25, 0.5, 0.75, 1.0]`
 - Wells: `773`

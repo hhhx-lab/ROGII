@@ -203,25 +203,61 @@ rsync -av archive/runs/<run_id>/ ./
 3. baseline CV
 4. feature build
 5. geometry SGD full-row residual candidate
-6. per-well alpha gater (`gated_geometry`)
-7. optional XGBoost leftover stack (`xgb_leftover` + `gated_geometry_plus_xgb_leftover`)
-8. Part 3 diagnostics / route
-9. blend candidate generation
-10. candidate selection on common OOF coverage
-11. postprocess with guard
-12. final submission export
-13. submission validation
+6. Part 3 diagnostics / route
+7. per-well oracle alpha gater (`gated_geometry`, diagnostic upper bound)
+8. learned gater (`learned_gated_geometry`, auto-submission candidate)
+9. optional XGBoost leftover stack (`xgb_leftover` + `gated_geometry_plus_xgb_leftover`)
+10. blend candidate generation
+11. candidate selection with oracle candidates excluded by default
+12. postprocess with guard
+13. final submission export
+14. submission validation
 ```
 
 注意：
 
-- leaderboard 主线 residual candidate 是 `--spec geometry` + `build_gated_geometry.py`；
+- residual backbone 是 `--spec geometry --max-rows-per-well 0`；
+- `gated_geometry` 现在明确是 oracle / diagnostic upper bound：它用每口训练井自己的 truth 搜 alpha，不能默认代表线上泛化能力；
+- 当前推荐的可提交 gater 是 `learned_gated_geometry`，它用井级特征学习 alpha，并用 GroupKFold by well 验证；
 - `--spec xgb` 只保留为 direct full-residual 对照，不是当前默认冲榜主线；
 - `--spec xgb_leftover` 只在 geometry gater 之后作为可选 stack 层；
 - 正式训练必须使用 full-row training，也就是 `--max-rows-per-well 0`；
 - 正式 XGBoost run 建议加 `--require-xgboost`，避免环境缺依赖时静默 fallback 到 sklearn HistGradientBoosting；
 - 当前 Part 3 主要是 diagnostics / route，不是 direct correction；
 - postprocess 只有 OOF 不变差才应被接受。
+
+### 3.1 每次全量运行都会记录配置
+
+使用服务器全量入口时：
+
+```bash
+.venv/bin/python scripts/run_part2_full_server.py
+```
+
+脚本会在开跑前写入本次 run 的配置快照，跑完后再补上结果：
+
+```text
+reports/server_part2_full_run_config.md
+reports/server_part2_full_run_config.json
+reports/server_part2_full_run_configs/<run_id>.md
+reports/server_part2_full_run_configs/<run_id>.json
+```
+
+配置快照会记录：
+
+- 本次命令行参数，例如 `--residual-spec`、`--train-rows-per-well`、`--max-iter`、`--require-xgboost`；
+- git branch / HEAD / dirty 状态；
+- 数据入口、train/test 文件数、sample submission 行数；
+- full-row training 是否开启；
+- gater / xgb_leftover 是否开启；
+- 计划执行的每一步命令和日志路径；
+- 运行结束后的 return code、耗时和失败步骤。
+
+为什么要看它：
+
+- leaderboard 结果差时，先确认是不是跑错配置；
+- 避免把 sampled run、fallback run、旧产物 run 当成正式 full run；
+- 多次实验之间可以按 `run_id` 对比配置差异。
 
 ## 4. 当前短期可运行命令
 
@@ -233,7 +269,9 @@ rsync -av archive/runs/<run_id>/ ./
 .venv/bin/python scripts/build_baseline_features.py
 .venv/bin/python scripts/build_geometry_features.py
 .venv/bin/python scripts/train_residual_model.py --spec geometry --max-rows-per-well 0
+.venv/bin/python scripts/build_part3_diagnostics.py
 .venv/bin/python scripts/build_gated_geometry.py
+.venv/bin/python scripts/train_learned_gater.py --model ridge
 .venv/bin/python scripts/build_leftover_targets.py
 .venv/bin/python scripts/train_residual_model.py --spec xgb_leftover --max-rows-per-well 0 --require-xgboost --max-iter 500
 .venv/bin/python scripts/build_gated_stack.py
@@ -241,7 +279,6 @@ rsync -av archive/runs/<run_id>/ ./
 .venv/bin/python scripts/evaluate_model_cv.py
 .venv/bin/python scripts/evaluate_residual_multimask.py
 .venv/bin/python scripts/validate_part2_outputs.py
-.venv/bin/python scripts/build_part3_diagnostics.py
 .venv/bin/python scripts/build_part3_features.py
 .venv/bin/python scripts/blend_predictions.py
 .venv/bin/python scripts/select_submission_candidate.py --dry-run
@@ -255,7 +292,7 @@ rsync -av archive/runs/<run_id>/ ./
 .venv/bin/python scripts/make_submission.py --variant auto --output submission.csv
 ```
 
-这条短路径要求前面的 baseline/residual/diagnostics 产物已经存在且来自同一次有效 run。
+这条短路径要求前面的 baseline/residual/diagnostics/OOF/submission 产物都存在，且来自同一次有效 run。`--variant auto` 现在必须通过 `select_submission_candidate.py` 的覆盖率和 eligibility 检查；如果只是想手动导出某个旧候选，需要显式写 `--variant geometry`、`--variant optimized` 等具体名字。
 
 ## 5. Step 1: Baseline Generation
 
@@ -459,9 +496,17 @@ sklearn.ensemble.HistGradientBoostingRegressor
 
 当前状态：
 
-- 计划中；
-- 尚未作为独立候选完整实现；
-- 当前 blend 里有 route-aware 权重搜索，但这还不等同于完整 gater。
+- 已实现 `scripts/build_gated_geometry.py`；
+- 已实现 `scripts/train_learned_gater.py`；
+- `gated_geometry` 是 per-well oracle alpha grid，会产出诊断上界；
+- `learned_gated_geometry` 才是默认可提交候选：它用 train wells 学 alpha，再对 held-out wells / test wells 预测 alpha；
+- candidate selection 默认排除 oracle / diagnostic-only 候选。
+
+为什么 oracle OOF 会虚高：
+
+- 它先看某口井的真实 TVT，选出这口井最优 alpha；
+- 再用同一口井的 OOF rows 计算 RMSE；
+- 这相当于“看过答案再调旋钮”，能说明这条路线的上限，但不能证明 test wells 会同样好。
 
 目标公式：
 
@@ -498,6 +543,7 @@ gater_reason
 - baseline-good wells 是否少被修坏；
 - degraded wells 是否减少；
 - P95/P99 是否改善。
+- learned gater 必须用 GroupKFold / per-well OOF 验证，不能用同一口井真值先选 alpha 再评价同一口井。
 
 失败时回退：
 
@@ -573,10 +619,11 @@ outputs/selected_candidate.json
 
 - baseline；
 - geometry residual；
-- gated_geometry；
+- gated_geometry，oracle diagnostic only，默认不可自动提交；
+- learned_gated_geometry，默认可自动提交；
 - xgb/tree residual direct，如果已经生成 OOF；
 - xgb_leftover；
-- gated_geometry_plus_xgb_leftover；
+- gated_geometry_plus_xgb_leftover，复用 oracle alpha，默认不可自动提交；
 - conservative；
 - balanced；
 - aggressive；
@@ -584,10 +631,11 @@ outputs/selected_candidate.json
 
 重要提醒：
 
-- 当前本地 OOF 最优是 `gated_geometry`，不是 `optimized` 或 direct `xgb`；
+- 当前本地 OOF 最优的 `gated_geometry` 是 oracle 上界，不应默认提交；
+- 默认选择应在 eligible candidates 里比较，例如 `learned_gated_geometry`、`geometry`、`optimized`、`xgb_leftover`；
 - 不要因为 `balanced` 名字更像主力就默认选 balanced；
-- stack 候选只有 OOF 真正更优时才应被选中；
-- 没有 OOF 的候选不能进入正式 selection。
+- stack 候选只有 OOF 真正更优、且不是 oracle / diagnostic-only 时才应被选中；
+- 没有 OOF 或被标成 diagnostic-only 的候选不能进入正式 selection。
 
 下一步计划：
 
@@ -604,11 +652,15 @@ outputs/selected_candidate.json
 .venv/bin/python scripts/make_submission.py --variant auto --output submission.csv
 ```
 
+`--variant auto` 不会在 selector 失败时回退到旧的 ensemble summary。没有同一次 run 的完整 OOF 时，它会失败；这比悄悄导出旧候选更适合正式冲榜。
+
 当前逻辑：
 
 - 读取 baseline、geometry、xgb/tree、blend 和 postprocess candidate；
 - 跳过缺 OOF、缺 submission 或 postprocess guard rejected 的候选；
-- 对 OOF 候选取共同 `id` 覆盖后再比较，避免不同覆盖范围混比；
+- 跳过 `eligible_for_auto_submission=false` 的 oracle / diagnostic-only 候选；
+- 每个候选先独立检查 OOF rows/wells 覆盖率，覆盖不足不能进入正式排名；
+- 共同 `id` 覆盖只作为诊断报告，不默认拿小交集决定最终胜负；
 - 默认按 OOF RMSE 最低选择；
 - RMSE 很接近时，用 worst-well RMSE、degraded wells、P95 作为 tie breaker；
 - 写出 `submission.csv`；
@@ -748,10 +800,12 @@ selected = lowest OOF RMSE among valid_candidates
 可以说：
 
 - 当前系统已经是 `baseline + residual correction`；
-- 当前 leaderboard primary residual 是 `geometry SGD + build_gated_geometry.py`；
+- 当前 residual backbone 是 `geometry SGD full-row`；
+- `gated_geometry` 是 oracle diagnostic upper bound，默认不参与 auto selection；
+- `learned_gated_geometry` 是当前推荐的可泛化 gater 候选；
 - direct `--spec xgb` 仍保留为对照，不是默认冲榜主线；
 - `xgb_leftover` 是 geometry 之后的可选 stack 层，需 OOF 验证；
-- 当前 `scripts/select_submission_candidate.py` 已实现候选选择，并按共同 OOF 覆盖比较；
+- 当前 `scripts/select_submission_candidate.py` 已实现候选选择，先按各候选完整 OOF 覆盖过滤，再按 OOF 排序；共同 OOF 覆盖只作诊断；
 - 当前 Part 3 能提供 route / diagnostics；
 - 当前 Part 4 能生成多个候选并按 OOF 自动选；
 - 当前 postprocess 有 `--min-improvement` guard。

@@ -25,6 +25,7 @@ VARIANT_FILES = {
     "optimized": SUBMISSION_DIR / "optimized_submission.csv",
     "geometry": SUBMISSION_DIR / "geometry_residual_submission.csv",
     "gated_geometry": SUBMISSION_DIR / "gated_geometry_submission.csv",
+    "learned_gated_geometry": SUBMISSION_DIR / "learned_gated_geometry_submission.csv",
     "xgb": SUBMISSION_DIR / "xgb_residual_submission.csv",
     "xgb_leftover": SUBMISSION_DIR / "xgb_leftover_submission.csv",
     "gated_geometry_plus_xgb_leftover": SUBMISSION_DIR / "gated_geometry_plus_xgb_leftover_submission.csv",
@@ -36,6 +37,7 @@ POSTPROCESSABLE_VARIANTS = {
     "optimized",
     "geometry",
     "gated_geometry",
+    "learned_gated_geometry",
     "xgb",
     "xgb_leftover",
     "gated_geometry_plus_xgb_leftover",
@@ -47,9 +49,14 @@ POSTPROCESS_OOF_FILES = {
     "optimized": OUTPUT_DIR / "blend_oof.csv",
     "geometry": OUTPUT_DIR / "residual_geometry_oof.csv",
     "gated_geometry": OUTPUT_DIR / "gated_geometry_oof.csv",
+    "learned_gated_geometry": OUTPUT_DIR / "learned_gated_geometry_oof.csv",
     "xgb": OUTPUT_DIR / "residual_xgb_oof.csv",
     "xgb_leftover": OUTPUT_DIR / "residual_xgb_leftover_oof.csv",
     "gated_geometry_plus_xgb_leftover": OUTPUT_DIR / "gated_geometry_plus_xgb_leftover_oof.csv",
+}
+DIAGNOSTIC_VARIANTS = {
+    "gated_geometry",
+    "gated_geometry_plus_xgb_leftover",
 }
 
 
@@ -83,55 +90,18 @@ def write_log(log_path: Path, record: dict[str, object]) -> None:
     log_path.write_text(json.dumps(history, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def parse_ensemble_report(path: Path) -> pd.DataFrame:
-    if not path.exists():
-        return pd.DataFrame(columns=["variant", "rmse"])
-    rows: list[dict[str, object]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped.startswith("|"):
-            continue
-        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
-        if len(cells) != 2 or cells[0] in {"variant", ":-------------"}:
-            continue
-        try:
-            rows.append({"variant": cells[0], "rmse": float(cells[1])})
-        except ValueError:
-            continue
-    return pd.DataFrame(rows, columns=["variant", "rmse"])
-
-
-def load_cv_summary() -> pd.DataFrame:
-    csv_path = OUTPUT_DIR / "ensemble_cv_summary.csv"
-    if csv_path.exists():
-        summary = pd.read_csv(csv_path)
-    else:
-        summary = parse_ensemble_report(REPORT_DIR / "ensemble_report.md")
-    if summary.empty:
-        return summary
-    return summary[summary["variant"].isin(VARIANT_FILES)].copy()
-
-
-def choose_variant(requested: str) -> tuple[str, str, Path, bool]:
+def choose_variant(requested: str, allow_oracle_candidates: bool = False) -> tuple[str, str, Path, bool]:
     if requested != "auto":
         return requested, "explicit", variant_path(requested), False
     try:
-        selected = select_best_candidate(write_report=True)
+        selected = select_best_candidate(write_report=True, allow_oracle_candidates=allow_oracle_candidates)
         return selected.name, "auto_candidate_selection", Path(selected.submission_path), selected.is_postprocessed
-    except Exception:
-        summary = load_cv_summary()
-    available = [variant for variant, path in VARIANT_FILES.items() if path.exists()]
-    if not available:
-        raise FileNotFoundError("No candidate submission files exist under submissions/")
-    if summary.empty:
-        fallback = "balanced" if "balanced" in available else available[0]
-        return fallback, "auto_fallback_no_cv_summary", variant_path(fallback), False
-    summary = summary[summary["variant"].isin(available)].sort_values("rmse", kind="mergesort")
-    if summary.empty:
-        fallback = "balanced" if "balanced" in available else available[0]
-        return fallback, "auto_fallback_no_available_cv_variant", variant_path(fallback), False
-    variant = str(summary.iloc[0]["variant"])
-    return variant, "auto_oof_best", variant_path(variant), False
+    except Exception as exc:
+        raise RuntimeError(
+            "auto variant requires a coverage-sufficient eligible candidate from "
+            "scripts/select_submission_candidate.py. Generate same-run OOF artifacts first, "
+            "or choose an explicit --variant for a manual diagnostic export."
+        ) from exc
 
 
 def variant_path(variant: str) -> Path:
@@ -171,12 +141,20 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=ROOT / "submission.csv")
     parser.add_argument("--log", type=Path, default=REPORT_DIR / "submission_log.md")
     parser.add_argument("--postprocess-policy", default="auto", choices=["auto", "always", "never"])
+    parser.add_argument(
+        "--allow-oracle-candidates",
+        action="store_true",
+        help="Allow oracle/diagnostic candidates during auto selection. This is for experiments, not default leaderboard export.",
+    )
     parser.add_argument("--clip-lower", type=float, default=9000.0)
     parser.add_argument("--clip-upper", type=float, default=13000.0)
     args = parser.parse_args()
 
     sample = load_sample_submission()[["id"]].copy()
-    selected_variant, selection_reason, selected_path, already_postprocessed = choose_variant(args.variant)
+    selected_variant, selection_reason, selected_path, already_postprocessed = choose_variant(
+        args.variant,
+        allow_oracle_candidates=args.allow_oracle_candidates,
+    )
     input_path = args.input or selected_path
     postprocessed_path = SUBMISSION_DIR / f"{selected_variant}_postprocessed_submission.csv"
     diagnostics_path = OUTPUT_DIR / "postprocess_diagnostics.csv"
@@ -231,6 +209,12 @@ def main() -> int:
     submission = submission[["id", "tvt"]]
     validate_submission(submission, sample)
     submission.to_csv(args.output, index=False)
+    diagnostic_warning = ""
+    if selected_variant in DIAGNOSTIC_VARIANTS:
+        diagnostic_warning = (
+            f"{selected_variant} is an oracle/diagnostic candidate and may overstate leaderboard performance."
+        )
+        print(f"WARNING: {diagnostic_warning}")
 
     write_log(
         args.log,
@@ -246,6 +230,8 @@ def main() -> int:
             "postprocess_used": postprocess_used,
             "postprocess_reason": postprocess_reason,
             "postprocessed": str(postprocessed_path) if postprocess_used else "",
+            "allow_oracle_candidates": args.allow_oracle_candidates,
+            "diagnostic_warning": diagnostic_warning,
             "rows": len(submission),
         },
     )

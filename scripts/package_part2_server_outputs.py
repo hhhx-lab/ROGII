@@ -41,9 +41,20 @@ OPTIONAL_GLOBS = [
     "reports/figures/residual_geometry_best_improved/*.png",
     "reports/figures/residual_geometry_worst_degraded/*.png",
     "reports/server_part2_preflight_report.md",
+    "reports/server_part2_full_run_config.md",
+    "reports/server_part2_full_run_config.json",
+    "reports/server_part2_full_run_configs/*.md",
+    "reports/server_part2_full_run_configs/*.json",
     "reports/server_part2_full_run_summary.md",
     "reports/server_part2_full_run_summary.json",
     "reports/server_part2_full_run_logs/*.log",
+    "models/learned_gated_geometry_config.json",
+    "models/learned_gater_model.pkl",
+    "outputs/learned_gated_alpha_by_well.csv",
+    "outputs/learned_gated_geometry_cv_by_well.csv",
+    "outputs/learned_gated_geometry_test_predictions.csv",
+    "reports/learned_gated_geometry_cv_report.md",
+    "submissions/learned_gated_geometry_submission.csv",
 ]
 
 FEATURE_FILES = [

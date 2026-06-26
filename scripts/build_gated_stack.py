@@ -153,6 +153,11 @@ def main() -> int:
         "model_name": "gated_geometry_plus_xgb_leftover",
         "model_family": "gated_stack",
         "model_backend": "per_well_alpha_grid",
+        "candidate_type": "oracle_gated_stack",
+        "oracle_candidate": True,
+        "diagnostic_only": True,
+        "eligible_for_auto_submission": False,
+        "eligibility_reason": "stack reuses per-well oracle alpha from gated_geometry; use learned_gated_geometry or another validated candidate for auto submission",
         "data_hash": data_hash_short(),
         "formula": "baseline + alpha * (geometry_residual + xgb_leftover_residual)",
         "metrics": metrics,
@@ -171,6 +176,11 @@ def main() -> int:
 
     lines = [
         "# Gated Geometry + XGB Leftover CV Report",
+        "",
+        "- Candidate type: `oracle_gated_stack`",
+        "- Eligible for auto submission: `False`",
+        "",
+        "Important: this stack reuses the per-well oracle alpha from `gated_geometry`. It is useful for diagnostics, but it is not a default auto-submission candidate.",
         "",
         "```text",
         "final_tvt = baseline_tvt + alpha * (geometry_residual + xgb_leftover_residual)",

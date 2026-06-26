@@ -21,6 +21,8 @@ outputs/*
 !outputs/submission_manifest.json
 !outputs/selected_candidate.json
 !outputs/gated_alpha_by_well.csv
+!outputs/learned_gated_alpha_by_well.csv
+!outputs/learned_gated_geometry_cv_by_well.csv
 features/*
 !features/.gitkeep
 !features/README.md
@@ -34,6 +36,9 @@ server_results/*
 !server_results/.gitkeep
 !server_results/README.md
 reports/server_part2_preflight_report.md
+reports/server_part2_full_run_config.md
+reports/server_part2_full_run_config.json
+reports/server_part2_full_run_configs/
 reports/server_part2_full_run_summary.md
 reports/server_part2_full_run_summary.json
 reports/server_part2_full_run_logs/
@@ -53,6 +58,7 @@ submissions/*.csv
 !submissions/geometry_residual_submission.csv
 !submissions/gated_geometry_submission.csv
 !submissions/gated_geometry_plus_xgb_leftover_submission.csv
+!submissions/learned_gated_geometry_submission.csv
 !submissions/optimized_submission.csv
 !submissions/optimized_postprocessed_submission.csv
 !submissions/xgb_leftover_submission.csv

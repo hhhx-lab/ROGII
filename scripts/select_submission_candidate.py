@@ -37,6 +37,8 @@ class CandidateSpec:
     pred_col: str
     submission_path: Path
     metadata_paths: tuple[Path, ...] = field(default_factory=tuple)
+    candidate_type: str = "validated_candidate"
+    eligible_for_auto_submission: bool = True
 
 
 @dataclass
@@ -82,6 +84,9 @@ class CandidateResult:
     oof_path: str = ""
     submission_path: str = ""
     is_postprocessed: bool = False
+    candidate_type: str = "validated_candidate"
+    eligible_for_auto_submission: bool = True
+    candidate_policy_reason: str = ""
 
     def to_record(self) -> dict[str, object]:
         return {
@@ -117,6 +122,9 @@ class CandidateResult:
             "oof_path": self.oof_path,
             "submission_path": self.submission_path,
             "is_postprocessed": self.is_postprocessed,
+            "candidate_type": self.candidate_type,
+            "eligible_for_auto_submission": self.eligible_for_auto_submission,
+            "candidate_policy_reason": self.candidate_policy_reason,
         }
 
 
@@ -234,6 +242,20 @@ def candidate_specs() -> list[CandidateSpec]:
             pred_col="final_pred",
             submission_path=SUBMISSION_DIR / "gated_geometry_submission.csv",
             metadata_paths=(MODEL_DIR / "gated_geometry_config.json", REPORT_DIR / "gated_geometry_cv_report.md"),
+            candidate_type="oracle_gated_residual",
+            eligible_for_auto_submission=False,
+        ),
+        CandidateSpec(
+            name="learned_gated_geometry",
+            kind="learned_gated_residual",
+            oof_path=OUTPUT_DIR / "learned_gated_geometry_oof.csv",
+            pred_col="final_pred",
+            submission_path=SUBMISSION_DIR / "learned_gated_geometry_submission.csv",
+            metadata_paths=(
+                MODEL_DIR / "learned_gated_geometry_config.json",
+                REPORT_DIR / "learned_gated_geometry_cv_report.md",
+            ),
+            candidate_type="learned_gated_residual",
         ),
         CandidateSpec(
             name="xgb_leftover",
@@ -256,6 +278,8 @@ def candidate_specs() -> list[CandidateSpec]:
                 MODEL_DIR / "gated_geometry_plus_xgb_leftover_config.json",
                 REPORT_DIR / "gated_geometry_plus_xgb_leftover_cv_report.md",
             ),
+            candidate_type="oracle_gated_stack",
+            eligible_for_auto_submission=False,
         ),
     ]
     blend_path = OUTPUT_DIR / "blend_oof.csv"
@@ -438,14 +462,61 @@ def artifact_version_info(spec: CandidateSpec, current_version: dict[str, Any]) 
     )
 
 
+def parse_bool(value: object) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    if text in {"true", "1", "yes", "y"}:
+        return True
+    if text in {"false", "0", "no", "n"}:
+        return False
+    return None
+
+
+def candidate_policy(spec: CandidateSpec) -> tuple[str, bool, str]:
+    candidate_type = spec.candidate_type
+    eligible = spec.eligible_for_auto_submission
+    reason = "default candidate policy"
+    for path in spec.metadata_paths:
+        if not path.exists() or path.suffix.lower() != ".json":
+            continue
+        data = read_json(path)
+        if not data:
+            continue
+        metadata_type = meaningful(find_key_recursive(data, {"candidate_type", "candidate_kind"}))
+        metadata_eligible = parse_bool(find_key_recursive(data, {"eligible_for_auto_submission", "auto_submission_eligible"}))
+        oracle_flag = parse_bool(find_key_recursive(data, {"oracle_candidate", "diagnostic_only", "is_oracle"}))
+        if metadata_type:
+            candidate_type = metadata_type
+            reason = f"metadata policy from {relpath(path)}"
+        if metadata_eligible is not None:
+            eligible = metadata_eligible
+            reason = f"metadata policy from {relpath(path)}"
+        if oracle_flag is True:
+            eligible = False
+            if candidate_type == "validated_candidate":
+                candidate_type = "diagnostic_upper_bound"
+            reason = f"oracle/diagnostic policy from {relpath(path)}"
+        break
+    if not eligible and reason == "default candidate policy":
+        reason = "default policy marks this candidate as diagnostic-only"
+    return candidate_type, eligible, reason
+
+
 def skipped_result(spec: CandidateSpec, reason: str, version: VersionInfo | None = None, status: str = "skipped") -> CandidateResult:
     version = version or VersionInfo()
+    candidate_type, auto_eligible, policy_reason = candidate_policy(spec)
     return CandidateResult(
         name=spec.name,
         kind=spec.kind,
         status=status,
         reason=reason,
         eligible=False,
+        candidate_type=candidate_type,
+        eligible_for_auto_submission=auto_eligible,
+        candidate_policy_reason=policy_reason,
         version_status=version.status,
         version_reason=version.reason,
         artifact_data_hash=version.data_hash,
@@ -543,8 +614,10 @@ def score_candidate_frame(
     frame: pd.DataFrame,
     baseline_oof: pd.DataFrame | None,
     coverage_threshold: float,
+    allow_oracle_candidates: bool = False,
 ) -> tuple[CandidateResult, pd.DataFrame]:
     version: VersionInfo = frame.attrs.get("version_info", VersionInfo())
+    candidate_type, auto_eligible, policy_reason = candidate_policy(spec)
     if len(frame) == 0:
         return skipped_result(spec, "empty OOF coverage", version), pd.DataFrame()
 
@@ -566,11 +639,23 @@ def score_candidate_frame(
     if duplicate_ids_dropped:
         coverage_reason += f"; duplicate ids dropped={duplicate_ids_dropped}"
 
+    status = "available" if coverage_ok else "insufficient_coverage"
+    eligible = coverage_ok and auto_eligible
+    reason = coverage_reason
+    if coverage_ok and not auto_eligible:
+        if allow_oracle_candidates:
+            status = "available"
+            eligible = True
+            reason = f"{coverage_reason}; oracle/diagnostic candidate allowed by explicit flag"
+        else:
+            status = "diagnostic_only"
+            reason = f"{coverage_reason}; excluded from auto submission: {policy_reason}"
+
     result = CandidateResult(
         name=spec.name,
         kind=spec.kind,
-        status="available" if coverage_ok else "insufficient_coverage",
-        reason=coverage_reason,
+        status=status,
+        reason=reason,
         rmse=float(metrics["rmse"]),
         mae=float(metrics["mae"]),
         p95_abs_error=float(metrics["p95_abs_error"]),
@@ -583,7 +668,10 @@ def score_candidate_frame(
         baseline_wells=baseline_wells,
         coverage_vs_baseline_rows=row_cov,
         coverage_vs_baseline_wells=well_cov,
-        eligible=coverage_ok,
+        eligible=eligible,
+        candidate_type=candidate_type,
+        eligible_for_auto_submission=auto_eligible,
+        candidate_policy_reason=policy_reason,
         version_status=version.status,
         version_reason=version.reason,
         artifact_data_hash=version.data_hash,
@@ -631,6 +719,8 @@ def postprocess_candidate_result(
         oof_path=str(OUTPUT_DIR / "postprocess_oof_summary.csv"),
         submission_path=str(submission_path) if variant else "",
         is_postprocessed=True,
+        candidate_type="postprocessed_candidate",
+        eligible_for_auto_submission=True,
     )
     if not guard.get("available"):
         return None, pd.DataFrame(), skipped
@@ -703,6 +793,8 @@ def postprocess_candidate_result(
         coverage_vs_baseline_rows=row_cov,
         coverage_vs_baseline_wells=well_cov,
         eligible=coverage_ok,
+        candidate_type="postprocessed_candidate",
+        eligible_for_auto_submission=True,
         version_status=version.status,
         version_reason=version.reason,
         artifact_data_hash=version.data_hash,
@@ -776,6 +868,7 @@ def apply_common_comparison(
 
 def collect_candidates(
     coverage_threshold: float = DEFAULT_COVERAGE_THRESHOLD,
+    allow_oracle_candidates: bool = False,
 ) -> tuple[list[CandidateResult], list[CandidateResult], dict[str, pd.DataFrame], dict[str, object], dict[str, Any]]:
     current_version = load_current_data_version()
     loaded: dict[str, pd.DataFrame] = {}
@@ -794,7 +887,13 @@ def collect_candidates(
     per_well: dict[str, pd.DataFrame] = {}
     for name, frame in loaded.items():
         spec = specs_by_name[name]
-        result, per_well_frame = score_candidate_frame(spec, frame, baseline_oof, coverage_threshold)
+        result, per_well_frame = score_candidate_frame(
+            spec,
+            frame,
+            baseline_oof,
+            coverage_threshold,
+            allow_oracle_candidates=allow_oracle_candidates,
+        )
         evaluated.append(result)
         if result.eligible:
             per_well[name] = per_well_frame
@@ -858,6 +957,9 @@ def result_table(results: list[CandidateResult]) -> pd.DataFrame:
         "p95_abs_error",
         "version_status",
         "version_reason",
+        "candidate_type",
+        "eligible_for_auto_submission",
+        "candidate_policy_reason",
         "duplicate_ids_dropped",
         "oof_path",
         "submission_path",
@@ -874,6 +976,7 @@ def write_outputs(
     current_version: dict[str, Any],
     tie_rmse_tolerance: float,
     coverage_threshold: float,
+    allow_oracle_candidates: bool = False,
 ) -> None:
     OUTPUT_DIR.mkdir(exist_ok=True)
     REPORT_DIR.mkdir(exist_ok=True)
@@ -888,6 +991,7 @@ def write_outputs(
             "coverage_threshold": coverage_threshold,
         },
         "selected_candidate": selected.to_record(),
+        "selected_candidate_eligible_for_auto_submission": selected.eligible_for_auto_submission,
         "selection_rule": {
             "primary": "lowest full-coverage OOF RMSE among candidates passing coverage and version checks",
             "coverage_threshold_rows": coverage_threshold,
@@ -895,6 +999,7 @@ def write_outputs(
             "tie_breakers": ["lowest worst_well_rmse", "fewest degraded_wells", "lowest p95_abs_error"],
             "tie_rmse_tolerance": tie_rmse_tolerance,
             "common_coverage_used_for_selection": False,
+            "oracle_candidates_excluded_from_auto_selection": not allow_oracle_candidates,
         },
         "common_comparison": common_info,
         "available_candidates": [candidate.to_record() for candidate in available],
@@ -916,6 +1021,8 @@ def write_outputs(
         "## Selection",
         "",
         f"- Selected candidate: `{selected.name}`",
+        f"- Selected candidate type: `{selected.candidate_type}`",
+        f"- Eligible for auto submission: `{selected.eligible_for_auto_submission}`",
         f"- Selected OOF RMSE: `{selected.rmse}`",
         f"- Selection basis: full candidate OOF RMSE after coverage/version filtering.",
         f"- Tie tolerance: `{tie_rmse_tolerance}`",
@@ -926,6 +1033,7 @@ def write_outputs(
         f"- Baseline rows: `{baseline_ref.rows if baseline_ref else None}`",
         f"- Baseline wells: `{baseline_ref.wells if baseline_ref else None}`",
         f"- Required coverage: rows >= `{coverage_threshold:.2f}`, wells >= `{coverage_threshold:.2f}`",
+        f"- Oracle candidates excluded from auto selection: `{not allow_oracle_candidates}`",
         f"- Current data version: `{json.dumps(format_data_version(current_version), ensure_ascii=False)}`",
         "",
         "## Common Coverage Diagnostic",
@@ -959,15 +1067,127 @@ def write_outputs(
     SELECTION_REPORT.write_text("\n".join(lines), encoding="utf-8")
 
 
+def write_no_selection_outputs(
+    evaluated: list[CandidateResult],
+    skipped: list[CandidateResult],
+    common_info: dict[str, object],
+    current_version: dict[str, Any],
+    tie_rmse_tolerance: float,
+    coverage_threshold: float,
+    allow_oracle_candidates: bool = False,
+    reason: str = "No coverage-sufficient eligible candidates were found.",
+) -> None:
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    REPORT_DIR.mkdir(exist_ok=True)
+    baseline_ref = next((candidate for candidate in evaluated if candidate.name == "baseline"), None)
+    payload = {
+        "current_data_version": format_data_version(current_version),
+        "baseline_reference": {
+            "rows": baseline_ref.rows if baseline_ref else None,
+            "wells": baseline_ref.wells if baseline_ref else None,
+            "path": baseline_ref.oof_path if baseline_ref else str(OUTPUT_DIR / "baseline_predictions_train_hidden.csv"),
+            "coverage_threshold": coverage_threshold,
+        },
+        "selected_candidate": None,
+        "selected_candidate_eligible_for_auto_submission": False,
+        "no_selection_reason": reason,
+        "selection_rule": {
+            "primary": "lowest full-coverage OOF RMSE among candidates passing coverage and version checks",
+            "coverage_threshold_rows": coverage_threshold,
+            "coverage_threshold_wells": coverage_threshold,
+            "tie_breakers": ["lowest worst_well_rmse", "fewest degraded_wells", "lowest p95_abs_error"],
+            "tie_rmse_tolerance": tie_rmse_tolerance,
+            "common_coverage_used_for_selection": False,
+            "oracle_candidates_excluded_from_auto_selection": not allow_oracle_candidates,
+        },
+        "common_comparison": common_info,
+        "available_candidates": [],
+        "skipped_candidates": [candidate.to_record() for candidate in skipped],
+        "evaluated_candidates": [candidate.to_record() for candidate in evaluated],
+    }
+    SELECTION_JSON.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    evaluated_df = result_table(evaluated)
+    skipped_df = result_table(skipped)
+    lines = [
+        "# Candidate Selection Report",
+        "",
+        "## Selection",
+        "",
+        "- Selected candidate: `_none_`",
+        f"- Reason: `{reason}`",
+        "- Action: generate or restore same-run OOF artifacts, then rerun candidate selection.",
+        "",
+        "## Baseline Reference",
+        "",
+        f"- Baseline rows: `{baseline_ref.rows if baseline_ref else None}`",
+        f"- Baseline wells: `{baseline_ref.wells if baseline_ref else None}`",
+        f"- Required coverage: rows >= `{coverage_threshold:.2f}`, wells >= `{coverage_threshold:.2f}`",
+        f"- Oracle candidates excluded from auto selection: `{not allow_oracle_candidates}`",
+        f"- Current data version: `{json.dumps(format_data_version(current_version), ensure_ascii=False)}`",
+        "",
+        "## Common Coverage Diagnostic",
+        "",
+        f"- Enabled: `{common_info.get('enabled')}`",
+        f"- Usable for selection: `{common_info.get('usable_for_selection')}`",
+        f"- Used for selection: `{common_info.get('used_for_selection')}`",
+        f"- Reason: `{common_info.get('reason')}`",
+        f"- Common rows: `{common_info.get('common_rows')}`",
+        f"- Common wells: `{common_info.get('common_wells')}`",
+        "",
+        "## Available Candidates",
+        "",
+        "_No available eligible candidates_",
+        "",
+        "## Evaluated Candidates",
+        "",
+        markdown_table(evaluated_df.round(6), index=False) if len(evaluated_df) else "_No evaluated candidates_",
+        "",
+        "## Skipped Or Insufficient Candidates",
+        "",
+        markdown_table(skipped_df.round(6).fillna(""), index=False) if len(skipped_df) else "_No skipped candidates_",
+        "",
+    ]
+    SELECTION_REPORT.write_text("\n".join(lines), encoding="utf-8")
+
+
 def select_best_candidate(
     tie_rmse_tolerance: float = 0.01,
     coverage_threshold: float = DEFAULT_COVERAGE_THRESHOLD,
+    allow_oracle_candidates: bool = False,
     write_report: bool = False,
 ) -> CandidateResult:
-    evaluated, skipped, per_well, common_info, current_version = collect_candidates(coverage_threshold=coverage_threshold)
-    selected = choose_candidate(evaluated, tie_rmse_tolerance)
+    evaluated, skipped, per_well, common_info, current_version = collect_candidates(
+        coverage_threshold=coverage_threshold,
+        allow_oracle_candidates=allow_oracle_candidates,
+    )
+    try:
+        selected = choose_candidate(evaluated, tie_rmse_tolerance)
+    except FileNotFoundError as exc:
+        if write_report:
+            write_no_selection_outputs(
+                evaluated,
+                skipped,
+                common_info,
+                current_version,
+                tie_rmse_tolerance,
+                coverage_threshold,
+                allow_oracle_candidates=allow_oracle_candidates,
+                reason=str(exc),
+            )
+        raise
     if write_report:
-        write_outputs(selected, evaluated, skipped, per_well, common_info, current_version, tie_rmse_tolerance, coverage_threshold)
+        write_outputs(
+            selected,
+            evaluated,
+            skipped,
+            per_well,
+            common_info,
+            current_version,
+            tie_rmse_tolerance,
+            coverage_threshold,
+            allow_oracle_candidates=allow_oracle_candidates,
+        )
     return selected
 
 
@@ -985,11 +1205,43 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=ROOT / "submission.csv")
     parser.add_argument("--tie-rmse-tolerance", type=float, default=0.01)
     parser.add_argument("--coverage-threshold", type=float, default=DEFAULT_COVERAGE_THRESHOLD)
+    parser.add_argument(
+        "--allow-oracle-candidates",
+        action="store_true",
+        help="Allow oracle/diagnostic candidates such as per-well alpha grids for experiment-only selection.",
+    )
     args = parser.parse_args()
 
-    evaluated, skipped, per_well, common_info, current_version = collect_candidates(coverage_threshold=args.coverage_threshold)
-    selected = choose_candidate(evaluated, args.tie_rmse_tolerance)
-    write_outputs(selected, evaluated, skipped, per_well, common_info, current_version, args.tie_rmse_tolerance, args.coverage_threshold)
+    evaluated, skipped, per_well, common_info, current_version = collect_candidates(
+        coverage_threshold=args.coverage_threshold,
+        allow_oracle_candidates=args.allow_oracle_candidates,
+    )
+    try:
+        selected = choose_candidate(evaluated, args.tie_rmse_tolerance)
+    except FileNotFoundError as exc:
+        write_no_selection_outputs(
+            evaluated,
+            skipped,
+            common_info,
+            current_version,
+            args.tie_rmse_tolerance,
+            args.coverage_threshold,
+            allow_oracle_candidates=args.allow_oracle_candidates,
+            reason=str(exc),
+        )
+        print(f"No selectable candidate: {exc}")
+        return 0 if args.dry_run else 1
+    write_outputs(
+        selected,
+        evaluated,
+        skipped,
+        per_well,
+        common_info,
+        current_version,
+        args.tie_rmse_tolerance,
+        args.coverage_threshold,
+        allow_oracle_candidates=args.allow_oracle_candidates,
+    )
     if args.export_submission and not args.dry_run:
         export_selected_submission(selected, args.output)
     print(f"Selected {selected.name}: rmse={selected.rmse}, rows={selected.rows}, wells={selected.wells}, source={selected.submission_path}")

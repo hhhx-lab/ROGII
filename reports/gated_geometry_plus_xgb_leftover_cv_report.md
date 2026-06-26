@@ -1,5 +1,10 @@
 # Gated Geometry + XGB Leftover CV Report
 
+- Candidate type: `oracle_gated_stack`
+- Eligible for auto submission: `False`
+
+Important: this stack reuses the per-well oracle alpha from `gated_geometry`. It is useful for diagnostics, but it is not a default auto-submission candidate.
+
 ```text
 final_tvt = baseline_tvt + alpha * (geometry_residual + xgb_leftover_residual)
 ```

@@ -293,8 +293,13 @@ sed -n '1,220p' reports/server_part2_preflight_report.md
 8. 训练 residual
 9. 跑 residual CV
 10. 跑 residual 多 mask（geometry control 才需要）
-11. 做 Part 2 最终审计
-12. 打包服务器结果
+11. 生成 Part 3 diagnostics
+12. 生成 oracle gated_geometry 诊断上界
+13. 训练 learned_gated_geometry
+14. 可选训练 xgb_leftover / gated stack
+15. 做 Part 2 最终审计
+16. 跑 candidate selection dry-run
+17. 打包服务器结果
 
 如果 dry run 打印的步骤看起来合理，再进入正式运行。
 
@@ -306,17 +311,21 @@ sed -n '1,220p' reports/server_part2_preflight_report.md
 .venv/bin/python scripts/run_part2_full_server.py
 ```
 
-这个命令默认就是 full-row 的 XGBoost 主线配置，也就是：
+这个命令默认就是当前更可信的 full-row `geometry + learned_gated_geometry` 主线，并会保留 oracle / stack 候选做诊断：
 
 ```text
---residual-spec xgb
+--residual-spec geometry
 --train-rows-per-well 0
 --min-fit-fraction 0.95
 --max-iter 500
+--with-gated-pipeline
+--with-learned-gater
+--with-xgb-leftover
 --require-xgboost
+oracle candidates excluded from auto selection
 ```
 
-并且训练入口会要求 `xgboost` 可用；如果环境里没有 `xgboost`，会直接失败，而不是静默回退到 sklearn fallback。
+其中 `geometry` 残差是当前本地 OOF 最稳的 backbone；`gated_geometry` 只是用每口训练井自己的 truth 搜 alpha 的 oracle 上界，默认不会被自动选为 final submission；`learned_gated_geometry` 会用井级特征学习 alpha，才是默认可提交候选。`xgb_leftover` 是在 gater 之后尝试补剩余误差的候选。如果环境里没有 `xgboost`，涉及 `xgb_leftover` 的步骤会直接失败，而不是静默回退到 sklearn fallback。
 
 如果你担心 SSH 断开，也可以用：
 
@@ -339,11 +348,23 @@ reports/server_part2_full_run_summary.md
 reports/server_part2_full_run_summary.json
 ```
 
+本次运行配置会写到：
+
+```text
+reports/server_part2_full_run_config.md
+reports/server_part2_full_run_config.json
+reports/server_part2_full_run_configs/<run_id>.md
+reports/server_part2_full_run_configs/<run_id>.json
+```
+
+先看 config，再看 summary。config 负责回答“这次到底按什么参数跑的”，summary 负责回答“每一步有没有跑过、有没有失败”。
+
 ## 9. 跑完后看什么
 
 跑完以后，先看 summary：
 
 ```bash
+sed -n '1,220p' reports/server_part2_full_run_config.md
 sed -n '1,220p' reports/server_part2_full_run_summary.md
 ```
 
