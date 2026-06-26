@@ -4,10 +4,10 @@
 
 | variant      |     rmse |
 |:-------------|---------:|
-| optimized    |  16.2932 |
-| geometry     |  16.3081 |
-| balanced     |  41.5657 |
-| aggressive   |  59.3528 |
+| geometry     |  15.6288 |
+| optimized    |  15.6288 |
+| balanced     |  42.2231 |
+| aggressive   |  59.9014 |
 | conservative | 109.595  |
 | baseline     | 119.933  |
 
@@ -15,11 +15,11 @@
 
 | route              |    rows |   geometry_weight |    rmse |
 |:-------------------|--------:|------------------:|--------:|
-| __global__         | 3783989 |              1    | 16.3081 |
-| baseline_fallback  |  205186 |              1    | 20.2986 |
-| geometry_residual  |   37915 |              1    | 11.5737 |
-| gr_residual        |  461472 |              0.95 | 15.3679 |
-| typewell_alignment | 3079416 |              1    | 16.1775 |
+| __global__         | 3783989 |                 1 | 15.6288 |
+| baseline_fallback  |  205186 |                 1 | 19.5549 |
+| geometry_residual  |   37915 |                 1 | 11.6032 |
+| gr_residual        |  461472 |                 1 | 14.6272 |
+| typewell_alignment | 3079416 |                 1 | 15.5225 |
 
 ## Test Routing
 

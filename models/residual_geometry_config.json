@@ -38,7 +38,7 @@
     "alpha": 0.0005,
     "max_iter": 30,
     "tol": 0.001,
-    "n_splits": 3,
+    "n_splits": 5,
     "learning_rate": 0.05,
     "max_depth": 4,
     "subsample": 0.9,
@@ -49,12 +49,13 @@
     "max_leaf_nodes": 31,
     "min_samples_leaf": 20,
     "l2_regularization": 0.0,
+    "use_sample_weight": true,
     "requested_model_backend": "sgd"
   },
   "metrics": {
-    "rmse": 16.30806037415457,
-    "mae": 11.517928435352506,
-    "bias": -0.11709935299205108,
+    "rmse": 15.628804658466327,
+    "mae": 11.173170794666355,
+    "bias": -0.0025242548547639325,
     "backend": "sgd",
     "cv_backend": "sgd"
   },

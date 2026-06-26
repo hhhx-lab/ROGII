@@ -10,14 +10,14 @@
   "data_hash": "unknown",
   "formula": "baseline + alpha * (geometry_residual + xgb_leftover_residual)",
   "metrics": {
-    "rmse": 15.030437455707865,
-    "mae": 10.764209318852668,
-    "median_abs_error": 7.824049813923921,
-    "p90_abs_error": 23.420000000000073,
-    "p95_abs_error": 30.396108628477293,
-    "p99_abs_error": 48.990010575621355,
-    "max_abs_error": 113.35421045480507,
-    "bias": -0.10607581194073647
+    "rmse": 14.346938288438892,
+    "mae": 10.439098811912258,
+    "median_abs_error": 7.755554660292546,
+    "p90_abs_error": 22.650062304590755,
+    "p95_abs_error": 28.99713868411125,
+    "p99_abs_error": 45.13894555429548,
+    "max_abs_error": 111.30666411180755,
+    "bias": -0.1733103343177462
   },
   "train_rows": 3783989,
   "fit_rows": 3783989,
@@ -26,13 +26,13 @@
   "geometry_source": "outputs\\residual_geometry_oof.csv",
   "xgb_leftover_source": "outputs\\residual_xgb_leftover_oof.csv",
   "gated_geometry_metrics": {
-    "rmse": 13.670479446104268,
-    "mae": 9.647564206372813,
-    "median_abs_error": 6.906211160736348,
-    "p90_abs_error": 21.325988359957044,
-    "p95_abs_error": 27.834802604892683,
-    "p99_abs_error": 45.187980206732945,
-    "max_abs_error": 109.89297183213966,
-    "bias": -0.3198938509563372
+    "rmse": 13.380673428950525,
+    "mae": 9.467846833714821,
+    "median_abs_error": 6.809999999999491,
+    "p90_abs_error": 20.944591816682443,
+    "p95_abs_error": 27.353335481168283,
+    "p99_abs_error": 43.37758779984575,
+    "max_abs_error": 105.23733008165436,
+    "bias": -0.09554924387471875
   }
 }

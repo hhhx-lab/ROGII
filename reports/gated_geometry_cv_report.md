@@ -16,25 +16,25 @@ Important: this candidate searches alpha using each training well's own truth, t
 | model | rmse | mae | p95_abs_error | bias |
 |:---|---:|---:|---:|---:|
 | baseline | 119.9333 | 53.6804 | 182.7800 | 4.9893 |
-| geometry_ungated | 16.3081 | 11.5179 | 32.8121 | -0.1171 |
-| gated_geometry | 13.6705 | 9.6476 | 27.8348 | -0.3199 |
+| geometry_ungated | 15.6288 | 11.1732 | 31.9450 | -0.0025 |
+| gated_geometry | 13.3807 | 9.4678 | 27.3533 | -0.0955 |
 
 ## Alpha Distribution
 
 |   alpha |   wells |
 |--------:|--------:|
 |    0    |     103 |
-|    0.25 |      23 |
-|    0.5  |      38 |
-|    0.75 |     114 |
-|    1    |     495 |
+|    0.25 |      18 |
+|    0.5  |      51 |
+|    0.75 |     104 |
+|    1    |     497 |
 
 ## Per-Well Summary
 
 - Improved vs baseline: `670`
 - Degraded vs baseline: `0`
-- Mean alpha: `0.7830`
-- Wells with alpha < 1.0: `278`
+- Mean alpha: `0.7827`
+- Wells with alpha < 1.0: `276`
 
 ## Outputs
 

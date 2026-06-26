@@ -12,7 +12,7 @@
     "__default__": 1.0,
     "baseline_fallback": 1.0,
     "geometry_residual": 1.0,
-    "gr_residual": 0.95,
+    "gr_residual": 1.0,
     "typewell_alignment": 1.0
   },
   "clip_lower": 9000.0,
@@ -22,7 +22,7 @@
   },
   "row_count": 14151,
   "selected_by_oof": {
-    "variant": "optimized",
-    "rmse": 16.293157661424246
+    "variant": "geometry",
+    "rmse": 15.628804658466327
   }
 }

@@ -11,9 +11,9 @@ final_tvt = baseline_tvt + alpha * (geometry_residual + xgb_leftover_residual)
 
 ## Overall Metrics
 
-- Stack RMSE: `15.0304`
-- Stack MAE: `10.7642`
-- Stack P95: `30.3961`
+- Stack RMSE: `14.3469`
+- Stack MAE: `10.4391`
+- Stack P95: `28.9971`
 - Rows: `3,783,989`
 - Wells: `773`
 
@@ -24,6 +24,6 @@ final_tvt = baseline_tvt + alpha * (geometry_residual + xgb_leftover_residual)
 
 ## Comparison
 
-- gated_geometry RMSE: `13.6705`
-- stack RMSE: `15.0304`
-- delta: `-1.3600`
+- gated_geometry RMSE: `13.3807`
+- stack RMSE: `14.3469`
+- delta: `-0.9663`
