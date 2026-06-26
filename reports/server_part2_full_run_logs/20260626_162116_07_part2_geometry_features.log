@@ -1,0 +1,4 @@
+# part2_geometry_features
+$ 'C:\Users\31745\Desktop\新建文件夹 (6)\ROGII\.venv\Scripts\python.exe' scripts/build_geometry_features.py
+
+Wrote geometry features to C:\Users\31745\Desktop\新建文件夹 (6)\ROGII\features

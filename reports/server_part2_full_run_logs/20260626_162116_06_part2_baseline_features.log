@@ -1,0 +1,4 @@
+# part2_baseline_features
+$ 'C:\Users\31745\Desktop\新建文件夹 (6)\ROGII\.venv\Scripts\python.exe' scripts/build_baseline_features.py
+
+Wrote baseline features to C:\Users\31745\Desktop\新建文件夹 (6)\ROGII\features
