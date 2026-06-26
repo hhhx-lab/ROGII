@@ -393,11 +393,25 @@ def build_steps(args: argparse.Namespace) -> list[tuple[str, list[str], dict[str
                 ]
             )
     steps.append(("part2_completion_audit", [py, "scripts/validate_part2_outputs.py", "--primary-spec", args.residual_spec], {}))
+    if not args.skip_blend:
+        steps.append(("blend_predictions", [py, "scripts/blend_predictions.py"], {}))
     if not args.skip_candidate_selection:
         selection_cmd = [py, "scripts/select_submission_candidate.py", "--dry-run"]
         if args.allow_oracle_auto_selection:
             selection_cmd.append("--allow-oracle-candidates")
         steps.append(("candidate_selection", selection_cmd, {}))
+    if not args.skip_postprocess:
+        steps.append(("postprocess_selected", [py, "scripts/postprocess_predictions.py", "--variant", "auto"], {}))
+    if not args.skip_final_submission:
+        make_cmd = [py, "scripts/make_submission.py", "--variant", "auto", "--output", "submission.csv"]
+        if args.allow_oracle_auto_selection:
+            make_cmd.append("--allow-oracle-candidates")
+        steps.extend(
+            [
+                ("make_submission", make_cmd, {}),
+                ("validate_submission", [py, "scripts/validate_submission.py", "--submission", "submission.csv"], {}),
+            ]
+        )
     return steps
 
 
@@ -516,6 +530,17 @@ def main() -> int:
         "--skip-candidate-selection",
         action="store_true",
         help="Skip automatic candidate selection dry-run at the end of the full run.",
+    )
+    parser.add_argument("--skip-blend", action="store_true", help="Skip blend candidate generation before selection.")
+    parser.add_argument(
+        "--skip-postprocess",
+        action="store_true",
+        help="Skip guarded postprocess for the selected candidate.",
+    )
+    parser.add_argument(
+        "--skip-final-submission",
+        action="store_true",
+        help="Skip make_submission.py and validate_submission.py export at the end of the full run.",
     )
     parser.add_argument("--skip-package", action="store_true")
     parser.add_argument("--include-features-in-package", action="store_true")

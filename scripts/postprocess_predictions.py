@@ -26,7 +26,38 @@ ROUTE_CONFIDENCE = {
     "geometry_residual": 0.55,
     "baseline_fallback": 0.35,
 }
-SUPPORTED_VARIANTS = ["conservative", "balanced", "aggressive", "optimized", "geometry", "xgb"]
+SUPPORTED_VARIANTS = [
+    "auto",
+    "conservative",
+    "balanced",
+    "aggressive",
+    "optimized",
+    "geometry",
+    "gated_geometry",
+    "learned_gated_geometry",
+    "xgb",
+    "xgb_leftover",
+    "gated_geometry_plus_xgb_leftover",
+]
+VARIANT_TARGETS: dict[str, tuple[Path, Path]] = {
+    "conservative": (SUBMISSION_DIR / "conservative_submission.csv", OUTPUT_DIR / "blend_oof.csv"),
+    "balanced": (SUBMISSION_DIR / "balanced_submission.csv", OUTPUT_DIR / "blend_oof.csv"),
+    "aggressive": (SUBMISSION_DIR / "aggressive_submission.csv", OUTPUT_DIR / "blend_oof.csv"),
+    "optimized": (SUBMISSION_DIR / "optimized_submission.csv", OUTPUT_DIR / "blend_oof.csv"),
+    "geometry": (SUBMISSION_DIR / "geometry_residual_submission.csv", OUTPUT_DIR / "residual_geometry_oof.csv"),
+    "gated_geometry": (SUBMISSION_DIR / "gated_geometry_submission.csv", OUTPUT_DIR / "gated_geometry_oof.csv"),
+    "learned_gated_geometry": (
+        SUBMISSION_DIR / "learned_gated_geometry_submission.csv",
+        OUTPUT_DIR / "learned_gated_geometry_oof.csv",
+    ),
+    "xgb": (SUBMISSION_DIR / "xgb_residual_submission.csv", OUTPUT_DIR / "residual_xgb_oof.csv"),
+    "xgb_leftover": (SUBMISSION_DIR / "xgb_leftover_submission.csv", OUTPUT_DIR / "residual_xgb_leftover_oof.csv"),
+    "gated_geometry_plus_xgb_leftover": (
+        SUBMISSION_DIR / "gated_geometry_plus_xgb_leftover_submission.csv",
+        OUTPUT_DIR / "gated_geometry_plus_xgb_leftover_oof.csv",
+    ),
+}
+SELECTION_JSON = OUTPUT_DIR / "selected_candidate.json"
 
 
 @dataclass
@@ -493,14 +524,45 @@ def run_postprocess(
     return submission_out
 
 
+def resolve_variant_targets(variant: str) -> tuple[str, Path, Path]:
+    if variant == "auto":
+        if not SELECTION_JSON.exists():
+            raise FileNotFoundError(
+                f"{SELECTION_JSON} is required for --variant auto; run select_submission_candidate.py first."
+            )
+        payload = json.loads(SELECTION_JSON.read_text(encoding="utf-8"))
+        selected = payload.get("selected_candidate")
+        if not isinstance(selected, dict) or not selected.get("name"):
+            raise ValueError(f"{SELECTION_JSON} does not contain a selected candidate.")
+        resolved = str(selected["name"])
+        submission_path = Path(str(selected.get("submission_path") or ""))
+        oof_path = Path(str(selected.get("oof_path") or ""))
+        if not submission_path.exists():
+            raise FileNotFoundError(f"Selected candidate submission is missing: {submission_path}")
+        if not oof_path.exists():
+            raise FileNotFoundError(f"Selected candidate OOF is missing: {oof_path}")
+        return resolved, submission_path, oof_path
+
+    try:
+        submission_path, oof_path = VARIANT_TARGETS[variant]
+    except KeyError as exc:
+        raise ValueError(f"Unknown variant: {variant}") from exc
+    return variant, submission_path, oof_path
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Postprocess a submission variant and write diagnostics.")
-    parser.add_argument("--variant", default="balanced", choices=SUPPORTED_VARIANTS)
+    parser.add_argument(
+        "--variant",
+        default="auto",
+        choices=SUPPORTED_VARIANTS,
+        help="Submission variant to postprocess. Use auto to read outputs/selected_candidate.json.",
+    )
     parser.add_argument("--input", type=Path, default=None)
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--diagnostics", type=Path, default=OUTPUT_DIR / "postprocess_diagnostics.csv")
     parser.add_argument("--report", type=Path, default=REPORT_DIR / "postprocess_report.md")
-    parser.add_argument("--oof", type=Path, default=OUTPUT_DIR / "blend_oof.csv")
+    parser.add_argument("--oof", type=Path, default=None)
     parser.add_argument("--clip-lower", type=float, default=9000.0)
     parser.add_argument("--clip-upper", type=float, default=13000.0)
     parser.add_argument("--allow-worse", action="store_true", help="Write postprocessed output even when OOF RMSE gets worse.")
@@ -508,15 +570,17 @@ def main() -> int:
     parser.add_argument("--tolerance", type=float, default=0.0, help="Deprecated compatibility option; prefer --min-improvement.")
     args = parser.parse_args()
 
-    input_path = args.input or (SUBMISSION_DIR / f"{args.variant}_submission.csv")
-    output_path = args.output or (SUBMISSION_DIR / f"{args.variant}_postprocessed_submission.csv")
+    resolved_variant, default_input, default_oof = resolve_variant_targets(args.variant)
+    input_path = args.input or default_input
+    oof_path = args.oof or default_oof
+    output_path = args.output or (SUBMISSION_DIR / f"{resolved_variant}_postprocessed_submission.csv")
     run_postprocess(
-        variant=args.variant,
+        variant=resolved_variant,
         input_path=input_path,
         output_path=output_path,
         diagnostics_path=args.diagnostics,
         report_path=args.report,
-        oof_path=args.oof,
+        oof_path=oof_path,
         clip_lower=args.clip_lower,
         clip_upper=args.clip_upper,
         allow_worse=args.allow_worse,

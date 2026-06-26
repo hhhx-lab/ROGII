@@ -282,14 +282,19 @@ reports/server_part2_full_run_configs/<run_id>.json
 .venv/bin/python scripts/build_part3_features.py
 .venv/bin/python scripts/blend_predictions.py
 .venv/bin/python scripts/select_submission_candidate.py --dry-run
+.venv/bin/python scripts/postprocess_predictions.py --variant auto
 .venv/bin/python scripts/make_submission.py --variant auto --output submission.csv
+.venv/bin/python scripts/validate_submission.py --submission submission.csv
 ```
 
 如果你只想用已经存在的候选重新导出最终提交：
 
 ```bash
 .venv/bin/python scripts/blend_predictions.py
+.venv/bin/python scripts/select_submission_candidate.py --dry-run
+.venv/bin/python scripts/postprocess_predictions.py --variant auto
 .venv/bin/python scripts/make_submission.py --variant auto --output submission.csv
+.venv/bin/python scripts/validate_submission.py --submission submission.csv
 ```
 
 这条短路径要求前面的 baseline/residual/diagnostics/OOF/submission 产物都存在，且来自同一次有效 run。`--variant auto` 现在必须通过 `select_submission_candidate.py` 的覆盖率和 eligibility 检查；如果只是想手动导出某个旧候选，需要显式写 `--variant geometry`、`--variant optimized` 等具体名字。
@@ -687,11 +692,13 @@ then export final submission
 
 当前已实现：
 
-`make_submission.py` 默认 `--postprocess-policy auto`，会调用：
+全量入口 `scripts/run_part2_full_server.py` 在 candidate selection 之后会默认执行：
 
-```text
-scripts/postprocess_predictions.py
+```bash
+.venv/bin/python scripts/postprocess_predictions.py --variant auto
 ```
+
+`make_submission.py` 默认 `--postprocess-policy auto`，**不会主动运行** postprocess；它只会复用同一次 run 中已经生成、且 guard 通过的 postprocessed submission。若要现场生成后处理产物，必须先单独执行上面的命令，或使用 `--postprocess-policy always`。
 
 硬规则：
 

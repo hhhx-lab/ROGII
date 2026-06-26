@@ -485,10 +485,10 @@
       "candidate_policy_reason": "oracle/diagnostic policy from models\\gated_geometry_plus_xgb_leftover_config.json"
     },
     {
-      "name": "postprocessed",
+      "name": "geometry_postprocessed",
       "kind": "postprocess",
       "status": "skipped",
-      "reason": "postprocess guard decision=unknown reason=missing postprocess report",
+      "reason": "postprocess guard decision=rejected reason=oof_improvement_guard_failed",
       "rmse": null,
       "mae": null,
       "p95_abs_error": null,
@@ -515,7 +515,7 @@
       "metadata_path": "",
       "duplicate_ids_dropped": 0,
       "oof_path": "C:\\Users\\31745\\Desktop\\新建文件夹 (5)\\ROGII\\outputs\\postprocess_oof_summary.csv",
-      "submission_path": "",
+      "submission_path": "C:\\Users\\31745\\Desktop\\新建文件夹 (5)\\ROGII\\submissions\\geometry_postprocessed_submission.csv",
       "is_postprocessed": true,
       "candidate_type": "postprocessed_candidate",
       "eligible_for_auto_submission": true,

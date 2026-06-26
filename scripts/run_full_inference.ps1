@@ -276,8 +276,9 @@ try {
     }
 
     Run-Step "blend_predictions" @($Python, "scripts/blend_predictions.py")
-    Run-Step "postprocess_$Variant" @($Python, "scripts/postprocess_predictions.py", "--variant", $Variant)
-    Run-Step "make_submission_$Variant" @($Python, "scripts/make_submission.py", "--variant", $Variant, "--output", "submission.csv")
+    Run-Step "candidate_selection" @($Python, "scripts/select_submission_candidate.py", "--dry-run")
+    Run-Step "postprocess_selected" @($Python, "scripts/postprocess_predictions.py", "--variant", "auto")
+    Run-Step "make_submission_auto" @($Python, "scripts/make_submission.py", "--variant", "auto", "--output", "submission.csv")
     Run-Step "validate_submission" @($Python, "scripts/validate_submission.py", "--submission", "submission.csv")
 
     $finishedAt = Format-Now

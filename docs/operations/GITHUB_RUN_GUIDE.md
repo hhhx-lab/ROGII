@@ -19,6 +19,7 @@ baseline
   -> Part 3 diagnostics / route
   -> blend candidates
   -> select_submission_candidate.py
+  -> postprocess_predictions.py --variant auto
   -> make_submission.py --variant auto
 ```
 
@@ -27,7 +28,9 @@ baseline
 ```bash
 .venv/bin/python scripts/blend_predictions.py
 .venv/bin/python scripts/select_submission_candidate.py --dry-run
+.venv/bin/python scripts/postprocess_predictions.py --variant auto
 .venv/bin/python scripts/make_submission.py --variant auto --output submission.csv
+.venv/bin/python scripts/validate_submission.py --submission submission.csv
 ```
 
 前提是 baseline、residual、learned gater、Part 3 diagnostics、OOF 和 submission 产物已经由同一次有效 run 生成。如果 `learned_gated_geometry` 还没生成，auto selection 会跳过它，并在其他 eligible 候选里选择；如果没有完整 OOF，`--variant auto` 会失败，避免用旧 summary 悄悄导出提交。
