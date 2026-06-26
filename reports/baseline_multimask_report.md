@@ -1,21 +1,21 @@
 # Baseline Multi-Mask Report
 
-- Data hash: `46fd84d5e7e1`
+- Data hash: `unknown`
 - Splits evaluated: 5411
 - Mask types: 7
 - Baselines: 6
 
 ## Best Baseline by Mask Type
 
-| data_hash    | mask_type         | baseline         | family   |   tail_window |   splits |   wells |   target_rows |   row_weighted_rmse |   row_weighted_mae |   mean_split_rmse |   median_split_rmse |   worst_split_rmse |   mean_bias |
-|:-------------|:------------------|:-----------------|:---------|--------------:|---------:|--------:|--------------:|--------------------:|-------------------:|------------------:|--------------------:|-------------------:|------------:|
-| 46fd84d5e7e1 | high_curvature    | B0_constant_last | B0       |           nan |      773 |     773 |       1018445 |             99.0218 |            51.2274 |           60.0785 |             10.6903 |           442.214  |    -52.2132 |
-| 46fd84d5e7e1 | high_gr_missing   | B0_constant_last | B0       |           nan |      773 |     773 |       1273066 |             39.7869 |            12.9017 |           15.146  |              6.6824 |           415.394  |     -7.8774 |
-| 46fd84d5e7e1 | mid_contiguous    | B0_constant_last | B0       |           nan |      773 |     773 |        888302 |              8.4333 |             5.6585 |            6.4388 |              5.242  |            95.4457 |     -0.2212 |
-| 46fd84d5e7e1 | original_hidden   | B0_constant_last | B0       |           nan |      773 |     773 |       3783989 |             15.9099 |            11.1965 |           12.8125 |             10.6651 |            70.6394 |     -1.4232 |
-| 46fd84d5e7e1 | random_contiguous | B0_constant_last | B0       |           nan |      773 |     773 |       1259444 |             28.9184 |            11.9257 |           13.8966 |              7.0152 |           286.761  |     -6.8592 |
-| 46fd84d5e7e1 | trailing_long     | B0_constant_last | B0       |           nan |      773 |     773 |       2930108 |             14.9329 |             9.7706 |           11.6399 |              9.5634 |           245.136  |     -0.8743 |
-| 46fd84d5e7e1 | trailing_short    | B0_constant_last | B0       |           nan |      773 |     773 |        896051 |              9.2371 |             5.9229 |            6.7349 |              5.2922 |            50.7366 |      0.2959 |
+| data_hash   | mask_type         | baseline         | family   |   tail_window |   splits |   wells |   target_rows |   row_weighted_rmse |   row_weighted_mae |   mean_split_rmse |   median_split_rmse |   worst_split_rmse |   mean_bias |
+|:------------|:------------------|:-----------------|:---------|--------------:|---------:|--------:|--------------:|--------------------:|-------------------:|------------------:|--------------------:|-------------------:|------------:|
+| unknown     | high_curvature    | B0_constant_last | B0       |           nan |      773 |     773 |       1018445 |             99.0218 |            51.2274 |           60.0785 |             10.6903 |           442.214  |    -52.2132 |
+| unknown     | high_gr_missing   | B0_constant_last | B0       |           nan |      773 |     773 |       1273066 |             39.7869 |            12.9017 |           15.146  |              6.6824 |           415.394  |     -7.8774 |
+| unknown     | mid_contiguous    | B0_constant_last | B0       |           nan |      773 |     773 |        888302 |              8.4333 |             5.6585 |            6.4388 |              5.242  |            95.4457 |     -0.2212 |
+| unknown     | original_hidden   | B0_constant_last | B0       |           nan |      773 |     773 |       3783989 |             15.9099 |            11.1965 |           12.8125 |             10.6651 |            70.6394 |     -1.4232 |
+| unknown     | random_contiguous | B0_constant_last | B0       |           nan |      773 |     773 |       1259444 |             28.9184 |            11.9257 |           13.8966 |              7.0152 |           286.761  |     -6.8592 |
+| unknown     | trailing_long     | B0_constant_last | B0       |           nan |      773 |     773 |       2930108 |             14.9329 |             9.7706 |           11.6399 |              9.5634 |           245.136  |     -0.8743 |
+| unknown     | trailing_short    | B0_constant_last | B0       |           nan |      773 |     773 |        896051 |              9.2371 |             5.9229 |            6.7349 |              5.2922 |            50.7366 |      0.2959 |
 
 ## Row-Weighted RMSE Pivot
 
@@ -37,5 +37,5 @@
 
 ## Outputs
 
-- Split-level metrics: `outputs/baseline_multimask_by_split.csv`
-- Overall metrics: `outputs/baseline_multimask_overall.csv`
+- Split-level metrics: `outputs\baseline_multimask_by_split.csv`
+- Overall metrics: `outputs\baseline_multimask_overall.csv`

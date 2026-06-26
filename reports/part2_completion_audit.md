@@ -1,7 +1,7 @@
 # Part 2 Completion Audit
 
 - Primary spec: `geometry`
-- Checks: 25
+- Checks: 28
 - Failures: 0
 
 ## Checks
@@ -31,7 +31,10 @@
 | geometry residual submission covers sample wells                                       | PASS     | 3                                                    |
 | geometry residual OOF predictions cover every residual target row                      | PASS     | oof=3783989, targets=3783989                         |
 | per-well geometry residual CV is finite                                                | PASS     | wells=773                                            |
-| optional xgb/tree residual artifacts                                                   | SKIP     | not generated in this run                            |
+| optional xgb/tree residual artifact set is complete when present                       | PASS     | missing=                                             |
+| xgb/tree residual submission matches sample format                                     | PASS     | rows=14151 sample=14151                              |
+| xgb/tree residual submission covers sample wells                                       | PASS     | 3                                                    |
+| xgb/tree residual OOF predictions cover every residual target row                      | PASS     | oof=3783989, targets=3783989                         |
 | reports describe residual CV metrics                                                   | PASS     |                                                      |
 
 ## Result

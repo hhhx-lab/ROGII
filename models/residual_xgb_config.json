@@ -1,8 +1,9 @@
 {
-  "model_class": "SGDRegressorPipeline",
-  "model_name": "geometry",
-  "data_hash": "unknown",
-  "feature_columns": [
+  "model_name": "xgb",
+  "model_family": "tree",
+  "model_backend": "xgboost",
+  "requested_model_backend": "xgboost",
+  "features": [
     "baseline_tvt",
     "known_rows",
     "target_rows",
@@ -29,12 +30,12 @@
     "speed_roll_mean_25",
     "speed_roll_std_25"
   ],
-  "selected_alpha": 1.0,
-  "train_rows_per_well": 0,
-  "max_rows_per_well": 0,
+  "target_csv": "residual_targets.csv",
+  "target_col": "residual_target",
+  "stack_geometry_correction": false,
   "params": {
-    "model_family": "sgd",
-    "model_backend": "sgd",
+    "model_family": "tree",
+    "model_backend": "xgboost",
     "alpha": 0.0005,
     "max_iter": 500,
     "tol": 0.001,
@@ -50,18 +51,23 @@
     "min_samples_leaf": 50,
     "l2_regularization": 0.05,
     "use_sample_weight": true,
-    "requested_model_backend": "sgd"
+    "requested_model_backend": "xgboost"
   },
   "metrics": {
-    "rmse": 15.628804658466327,
-    "mae": 11.173170794666355,
-    "bias": -0.0025242548547639325,
-    "backend": "sgd",
-    "cv_backend": "sgd"
+    "rmse": 31.473075192016324,
+    "mae": 13.74774425919545,
+    "bias": -0.3148229572846308,
+    "backend": "xgboost",
+    "cv_backend": "xgboost"
   },
-  "random_seed": 42,
-  "residual_clip_config": {
-    "clip_abs": 1000000000.0
+  "final_tvt_metrics": {
+    "rmse": 31.473075192016324,
+    "mae": 13.74774425919545,
+    "bias": -0.3148229572846308
   },
-  "source_config": "models/residual_geometry_hgb_config.json"
+  "train_rows": 3783989,
+  "fit_rows": 3783989,
+  "fit_fraction": 1.0,
+  "n_splits": 5,
+  "max_rows_per_well": 0
 }
