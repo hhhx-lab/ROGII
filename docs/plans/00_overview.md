@@ -34,8 +34,8 @@ Kaggle ROGII Wellbore Geology Prediction 要求根据水平井轨迹、已知段
 |---|---|
 | 主框架 | `baseline + residual correction` |
 | baseline | 已能生成 train hidden OOF 和 test submission |
-| Part 2 residual | 当前实际模型是 `StandardScaler + SGDRegressor` |
-| XGBoost | 尚未实现，是下一步 planned residual candidate |
+| Part 2 residual | 当前 geometry residual control 仍是 `StandardScaler + SGDRegressor`，同时已接入 direct `xgb` residual candidate |
+| XGBoost | 已接入为 direct residual candidate，正式 full run 必须 `--require-xgboost` |
 | residual target | `residual_target = truth_tvt - baseline_tvt` |
 | Part 3 | 当前主要是 diagnostics / route，不是强 correction |
 | Part 4 | 已有 candidate / blend / auto selection 雏形，但计划需要更严格 |
@@ -152,14 +152,13 @@ residual_target = truth_tvt - baseline_tvt
 
 当前已实现：
 
-- `scripts/train_residual_model.py` 使用 `StandardScaler + SGDRegressor`；
-- 支持 `geometry`、`gr`、`typewell` 三类 `ModelSpec`；
+- `scripts/train_residual_model.py` 支持 `geometry`、`gr`、`typewell` 三类 residual control，并接入 direct `xgb` tree residual；
 - 使用 `GroupKFold` 按 well 做 OOF；
 - 输出 `final_pred = baseline_tvt + oof_residual_pred`。
 
 下一步计划：
 
-- 增加 XGBoost residual；
+- 继续比较 `geometry` 和 direct `xgb` residual；
 - 增加 HistGradientBoosting residual；
 - 如果环境允许，再增加 LightGBM residual；
 - 所有模型使用同一套 residual target、GroupKFold 和 per-well CV 比较。
@@ -281,11 +280,10 @@ Part 3 的目标不是单独生成最终 TVT，而是提供地质证据。
 ```text
 candidate models:
   baseline
-  SGD residual
-  XGBoost residual planned
-  HistGradientBoosting residual planned
-  gated residual planned
-  GR/typewell alignment enhanced residual planned
+  geometry residual
+  direct XGBoost residual
+  optional gated residual
+  optional GR/typewell alignment enhanced residual
   blend candidates
 
 selection:
@@ -308,9 +306,9 @@ if postprocess_rmse_after > postprocess_rmse_before:
 
 ## 10. 后续推荐顺序
 
-1. 固化当前 SGD residual 作为 residual control。
-2. 实现 XGBoost residual，并和 SGD 用同一套 GroupKFold OOF 比较。
-3. 增加 HistGradientBoosting residual，作为 sklearn tree baseline。
+1. 固化当前 geometry residual 作为 residual control。
+2. 保持 direct xgb 和 geometry 并列比较，用同一套 GroupKFold OOF。
+3. 只把 HistGradientBoosting / LightGBM 当实验型对照，不进默认主线。
 4. 实现第一版 alpha grid / rule-based gater。
 5. 把 Part 3 alignment 特征接入 residual / gater，而不是直接改 final TVT。
 6. 扩展 `blend_predictions.py`，把所有候选统一写入 OOF summary。

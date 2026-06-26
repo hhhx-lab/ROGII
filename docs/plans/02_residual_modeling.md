@@ -28,13 +28,12 @@ residual_target = truth_tvt - baseline_tvt
 
 ## 2. 当前真实状态
 
-当前仓库里的 `scripts/train_residual_model.py` 实际使用：
+当前仓库里的 `scripts/train_residual_model.py` 已经把两条主线都接进来了：
 
-```text
-StandardScaler + SGDRegressor
-```
+- `geometry` residual control 仍是当前最稳的基础 control，底层可见实现是 `StandardScaler + SGDRegressor`；
+- `xgb` 是 direct tree residual candidate，优先走真实 XGBoost，缺依赖时只作为实验 fallback 到 `HistGradientBoostingRegressor`。
 
-这点必须写清楚：当前已经有 `--spec xgb` 的 XGBoost/tree residual 训练入口，但当前已生成、可作为控制组的 residual 产物仍主要来自 SGD pipeline。部分旧模型文件名里仍有 `_hgb` 历史命名，不代表当前 geometry control 一定是 HGB。
+这点必须写清楚：当前不是“只有一个 SGD residual”，而是“geometry residual 控制组 + direct xgb 并列候选”。部分旧模型文件名里仍有 `_hgb` 历史命名，不代表当前主线。
 
 当前已实现能力：
 
@@ -44,15 +43,15 @@ StandardScaler + SGDRegressor
 - 输出 OOF residual prediction；
 - 输出 test prediction；
 - 输出 per-well CV report；
-- 支持 `geometry`、`gr`、`typewell` 三类 `ModelSpec`。
-- 支持 `xgb` tree residual `ModelSpec`，优先 `xgboost.XGBRegressor`，缺依赖时 fallback 到 sklearn `HistGradientBoostingRegressor`。
+- 支持 `geometry`、`gr`、`typewell` 三类 `ModelSpec`；
+- 支持 `xgb` tree residual `ModelSpec`，优先 `xgboost.XGBRegressor`，缺依赖时 fallback 到 sklearn `HistGradientBoostingRegressor`，但正式 full run 必须 `--require-xgboost`。
 
 当前报告里的事实：
 
 - `reports/residual_geometry_cv_report.md` 显示 baseline RMSE `119.933`，geometry residual RMSE `16.1024`；
 - `633` 口井改善，`140` 口井退化；
 - `selected_alpha = 1.0`；
-- 说明 SGD residual 已经是很强的 control model，但仍需要 gater 限制退化井。
+- 说明 geometry residual 已经是很强的 control model，但仍需要 gater 限制退化井。
 
 ## 3. 输入与输出
 
@@ -97,7 +96,18 @@ models/residual_geometry_hgb_config.json
 models/residual_geometry_hgb_feature_list.txt
 ```
 
-注意：这里的 `_hgb` 是历史文件名，不代表当前模型是 HGB。
+direct xgb 另外输出：
+
+```text
+outputs/residual_xgb_oof.csv
+outputs/residual_xgb_cv_by_well.csv
+outputs/residual_xgb_test_predictions.csv
+submissions/xgb_residual_submission.csv
+reports/residual_xgb_cv_report.md
+models/residual_xgb_model.pkl
+models/residual_xgb_config.json
+models/residual_xgb_feature_list.txt
+```
 
 ## 4. Residual Target 定义
 
@@ -129,13 +139,13 @@ final_tvt = baseline_tvt + predicted_residual
 
 ## 5. 当前 SGD Residual 是什么角色
 
-当前 SGD residual 不是最终上限，而是 residual control。
+当前 geometry residual 不是最终上限，而是 residual control。
 
 它的作用：
 
 - 证明 `baseline + residual` 这个框架有效；
 - 提供一个轻量、可复现、低依赖的候选；
-- 给 XGBoost/tree model 提供比较对象；
+- 给 direct XGBoost/tree model 提供比较对象；
 - 给 Part 4 提供当前可运行的 geometry residual submission。
 
 它解决的问题：
@@ -166,7 +176,7 @@ final_tvt = baseline_tvt + predicted_residual
 
 ## 6. 下一步模型候选
 
-下一步不是推翻框架，而是替换或增强 residual model：
+下一步不是推翻框架，而是并列比较 residual model：
 
 ```text
 final_tvt = baseline_tvt + model(features)
@@ -176,8 +186,8 @@ final_tvt = baseline_tvt + model(features)
 
 | 候选 | 状态 | 为什么做 | 风险 |
 |---|---|---|---|
-| SGD residual | 已实现 | 轻量、稳定、低依赖 | 非线性能力有限 |
-| XGBoost residual | 脚本已实现，产物需运行生成 | 擅长非线性特征交互，适合 tabular | 需要依赖和参数控制 |
+| geometry residual | 已实现 | 轻量、稳定、低依赖 | 非线性能力有限 |
+| direct XGBoost residual | 脚本已实现，产物需运行生成 | 擅长非线性特征交互，适合 tabular | 需要依赖和参数控制 |
 | HistGradientBoosting residual | 已作为 XGBoost fallback 实现 | sklearn 自带，环境更稳 | 表达力可能低于 XGBoost |
 | LightGBM residual | planned if environment allows | tabular 强模型，速度快 | Kaggle/服务器环境依赖要确认 |
 | Ridge / ElasticNet residual | optional control | 线性 sanity check | 上限低 |
@@ -196,7 +206,7 @@ final_tvt = baseline_tvt + model(features)
 
 ### 7.1 为什么做
 
-当前 SGD 是线性模型，输入特征之间的复杂组合需要人工特征来表达。`scripts/train_residual_model.py --spec xgb` 已经接入 tree residual：如果 `xgboost` 可 import，则使用 `XGBRegressor`；否则自动使用 sklearn `HistGradientBoostingRegressor`。XGBoost 更擅长自动学习非线性规则，例如：
+当前 geometry residual 是线性模型，输入特征之间的复杂组合需要人工特征来表达。`scripts/train_residual_model.py --spec xgb` 已经接入 tree residual：如果 `xgboost` 可 import，则使用 `XGBRegressor`；否则自动使用 sklearn `HistGradientBoostingRegressor`。正式 full run 里必须 `--require-xgboost`，这样才能保证冲榜结果真的是 XGBoost。XGBoost 更擅长自动学习非线性规则，例如：
 
 - target 很长且 baseline slope 不稳定时，correction 可能更大；
 - GR 缺失率高时，某些 GR 特征应该降权；
@@ -226,7 +236,7 @@ Part 3 route
 alignment confidence if available
 ```
 
-不要第一版就塞入所有高维特征。先做一个可解释、可比较的 XGBoost residual。
+不要第一版就塞入所有高维特征。先做一个可解释、可比较的 direct XGBoost residual。
 
 ### 7.4 输出
 
@@ -244,7 +254,7 @@ models/residual_xgb_config.json
 
 ### 7.5 如何验证是否变好
 
-必须和 SGD residual 同表比较：
+必须和 geometry residual 同表比较：
 
 - overall RMSE；
 - mean well RMSE；

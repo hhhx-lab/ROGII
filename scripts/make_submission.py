@@ -27,8 +27,6 @@ VARIANT_FILES = {
     "gated_geometry": SUBMISSION_DIR / "gated_geometry_submission.csv",
     "learned_gated_geometry": SUBMISSION_DIR / "learned_gated_geometry_submission.csv",
     "xgb": SUBMISSION_DIR / "xgb_residual_submission.csv",
-    "xgb_leftover": SUBMISSION_DIR / "xgb_leftover_submission.csv",
-    "gated_geometry_plus_xgb_leftover": SUBMISSION_DIR / "gated_geometry_plus_xgb_leftover_submission.csv",
 }
 POSTPROCESSABLE_VARIANTS = {
     "conservative",
@@ -39,8 +37,6 @@ POSTPROCESSABLE_VARIANTS = {
     "gated_geometry",
     "learned_gated_geometry",
     "xgb",
-    "xgb_leftover",
-    "gated_geometry_plus_xgb_leftover",
 }
 POSTPROCESS_OOF_FILES = {
     "conservative": OUTPUT_DIR / "blend_oof.csv",
@@ -51,12 +47,9 @@ POSTPROCESS_OOF_FILES = {
     "gated_geometry": OUTPUT_DIR / "gated_geometry_oof.csv",
     "learned_gated_geometry": OUTPUT_DIR / "learned_gated_geometry_oof.csv",
     "xgb": OUTPUT_DIR / "residual_xgb_oof.csv",
-    "xgb_leftover": OUTPUT_DIR / "residual_xgb_leftover_oof.csv",
-    "gated_geometry_plus_xgb_leftover": OUTPUT_DIR / "gated_geometry_plus_xgb_leftover_oof.csv",
 }
 DIAGNOSTIC_VARIANTS = {
     "gated_geometry",
-    "gated_geometry_plus_xgb_leftover",
 }
 
 

@@ -36,8 +36,6 @@ SUPPORTED_VARIANTS = [
     "gated_geometry",
     "learned_gated_geometry",
     "xgb",
-    "xgb_leftover",
-    "gated_geometry_plus_xgb_leftover",
 ]
 VARIANT_TARGETS: dict[str, tuple[Path, Path]] = {
     "conservative": (SUBMISSION_DIR / "conservative_submission.csv", OUTPUT_DIR / "blend_oof.csv"),
@@ -51,11 +49,6 @@ VARIANT_TARGETS: dict[str, tuple[Path, Path]] = {
         OUTPUT_DIR / "learned_gated_geometry_oof.csv",
     ),
     "xgb": (SUBMISSION_DIR / "xgb_residual_submission.csv", OUTPUT_DIR / "residual_xgb_oof.csv"),
-    "xgb_leftover": (SUBMISSION_DIR / "xgb_leftover_submission.csv", OUTPUT_DIR / "residual_xgb_leftover_oof.csv"),
-    "gated_geometry_plus_xgb_leftover": (
-        SUBMISSION_DIR / "gated_geometry_plus_xgb_leftover_submission.csv",
-        OUTPUT_DIR / "gated_geometry_plus_xgb_leftover_oof.csv",
-    ),
 }
 SELECTION_JSON = OUTPUT_DIR / "selected_candidate.json"
 

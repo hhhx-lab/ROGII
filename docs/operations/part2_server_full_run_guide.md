@@ -290,16 +290,19 @@ sed -n '1,220p' reports/server_part2_preflight_report.md
 5. baseline 多 mask 检查
 6. 生成 baseline 特征
 7. 生成 geometry 特征
-8. 训练 residual
-9. 跑 residual CV
-10. 跑 residual 多 mask（geometry control 才需要）
+8. 训练 geometry residual
+9. 训练 direct xgb residual
+10. 跑 residual CV / residual 多 mask
 11. 生成 Part 3 diagnostics
 12. 生成 oracle gated_geometry 诊断上界
 13. 训练 learned_gated_geometry
-14. 可选训练 xgb_leftover / gated stack
-15. 做 Part 2 最终审计
+14. 做 Part 2 最终审计
+15. 跑 blend_predictions
 16. 跑 candidate selection dry-run
-17. 打包服务器结果
+17. 跑 postprocess_predictions --variant auto
+18. 跑 make_submission --variant auto
+19. 跑 validate_submission
+20. 打包服务器结果
 
 如果 dry run 打印的步骤看起来合理，再进入正式运行。
 
@@ -311,7 +314,7 @@ sed -n '1,220p' reports/server_part2_preflight_report.md
 .venv/bin/python scripts/run_part2_full_server.py
 ```
 
-这个命令默认就是当前更可信的 full-row `geometry + learned_gated_geometry` 主线，并会保留 oracle / stack 候选做诊断：
+这个命令默认就是当前更可信的并列 residual 主线：`geometry` + direct `xgb`，并会保留 oracle / learned gater 候选做诊断：
 
 ```text
 --residual-spec geometry
@@ -320,12 +323,12 @@ sed -n '1,220p' reports/server_part2_preflight_report.md
 --max-iter 500
 --with-gated-pipeline
 --with-learned-gater
---with-xgb-leftover
+--with-direct-xgb
 --require-xgboost
 oracle candidates excluded from auto selection
 ```
 
-其中 `geometry` 残差是当前本地 OOF 最稳的 backbone；`gated_geometry` 只是用每口训练井自己的 truth 搜 alpha 的 oracle 上界，默认不会被自动选为 final submission；`learned_gated_geometry` 会用井级特征学习 alpha，才是默认可提交候选。`xgb_leftover` 是在 gater 之后尝试补剩余误差的候选。如果环境里没有 `xgboost`，涉及 `xgb_leftover` 的步骤会直接失败，而不是静默回退到 sklearn fallback。
+其中 `geometry` 和 direct `xgb` 都是并列 residual candidate，最终由同一套 OOF / GroupKFold / per-well CV 指标比较。`gated_geometry` 只是用每口训练井自己的 truth 搜 alpha 的 oracle 上界，默认不会被自动选为 final submission；`learned_gated_geometry` 只作为可泛化门控候选保留。如果环境里没有 `xgboost`，direct `xgb` 的正式 full run 会直接失败，而不是静默回退到 sklearn fallback。`xgb_leftover` / `gated_geometry_plus_xgb_leftover` 只保留为历史/诊断路线，不再是默认主线。
 
 如果你担心 SSH 断开，也可以用：
 

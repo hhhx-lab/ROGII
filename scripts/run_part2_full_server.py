@@ -153,9 +153,10 @@ def build_run_config(
             "with_learned_gater": args.with_learned_gater,
             "learned_gater_model": args.learned_gater_model,
             "learned_gater_snap_alpha_grid": args.learned_gater_snap_alpha_grid,
+            "with_direct_xgb": args.with_direct_xgb,
             "with_xgb_leftover": args.with_xgb_leftover,
             "allow_oracle_auto_selection": args.allow_oracle_auto_selection,
-            "candidate_eligibility_policy": "oracle/diagnostic candidates are excluded unless --allow-oracle-auto-selection is set",
+            "candidate_eligibility_policy": "oracle/diagnostic and legacy stack candidates are excluded unless explicitly enabled",
         },
         "planned_steps": planned_step_rows(steps, run_stamp),
         "results": results or [],
@@ -210,6 +211,7 @@ def write_run_config(config: dict[str, object]) -> None:
         f"- with_learned_gater: `{training.get('with_learned_gater')}`",
         f"- learned_gater_model: `{training.get('learned_gater_model')}`",
         f"- learned_gater_snap_alpha_grid: `{training.get('learned_gater_snap_alpha_grid')}`",
+        f"- with_direct_xgb: `{training.get('with_direct_xgb')}`",
         f"- with_xgb_leftover: `{training.get('with_xgb_leftover')}`",
         f"- allow_oracle_auto_selection: `{training.get('allow_oracle_auto_selection')}`",
         f"- candidate_eligibility_policy: `{training.get('candidate_eligibility_policy')}`",
@@ -275,28 +277,31 @@ def run_step(name: str, command: list[str], env: dict[str, str], log_path: Path,
 
 def build_steps(args: argparse.Namespace) -> list[tuple[str, list[str], dict[str, str]]]:
     py = sys.executable
-    residual_train_cmd = [
-        py,
-        "scripts/train_residual_model.py",
-        "--spec",
-        args.residual_spec,
-        "--max-rows-per-well",
-        str(args.train_rows_per_well),
-        "--max-iter",
-        str(args.max_iter),
-        "--learning-rate",
-        str(args.learning_rate),
-        "--max-leaf-nodes",
-        str(args.max_leaf_nodes),
-        "--min-samples-leaf",
-        str(args.min_samples_leaf),
-        "--l2-regularization",
-        str(args.l2),
-        "--min-fit-fraction",
-        str(args.min_fit_fraction),
-    ]
-    if args.require_xgboost:
-        residual_train_cmd.append("--require-xgboost")
+
+    def residual_train_cmd(spec: str) -> list[str]:
+        command = [
+            py,
+            "scripts/train_residual_model.py",
+            "--spec",
+            spec,
+            "--max-rows-per-well",
+            str(args.train_rows_per_well),
+            "--max-iter",
+            str(args.max_iter),
+            "--learning-rate",
+            str(args.learning_rate),
+            "--max-leaf-nodes",
+            str(args.max_leaf_nodes),
+            "--min-samples-leaf",
+            str(args.min_samples_leaf),
+            "--l2-regularization",
+            str(args.l2),
+            "--min-fit-fraction",
+            str(args.min_fit_fraction),
+        ]
+        if args.require_xgboost and spec == "xgb":
+            command.append("--require-xgboost")
+        return command
 
     steps: list[tuple[str, list[str], dict[str, str]]] = [
         ("preflight", [py, "scripts/server_part2_preflight.py"], {}),
@@ -312,15 +317,16 @@ def build_steps(args: argparse.Namespace) -> list[tuple[str, list[str], dict[str
             ("part2_baseline_features", [py, "scripts/build_baseline_features.py"], {}),
             ("part2_geometry_features", [py, "scripts/build_geometry_features.py"], {}),
             (
-                "part2_full_residual_training",
-                residual_train_cmd,
+                "train_geometry_residual",
+                residual_train_cmd("geometry"),
                 {},
             ),
         ]
     )
-    if args.residual_spec == "geometry":
-        steps.append(("part2_cv_reports", [py, "scripts/evaluate_model_cv.py"], {}))
-    if args.residual_spec == "geometry" and not args.skip_residual_multimask:
+    if args.with_direct_xgb:
+        steps.append(("train_direct_xgb_residual", residual_train_cmd("xgb"), {}))
+    steps.append(("part2_cv_reports", [py, "scripts/evaluate_model_cv.py"], {}))
+    if not args.skip_residual_multimask:
         steps.append(
             (
                 "part2_full_residual_multimask",
@@ -332,20 +338,6 @@ def build_steps(args: argparse.Namespace) -> list[tuple[str, list[str], dict[str
             )
     )
     if args.with_gated_pipeline:
-        if args.residual_spec != "geometry":
-            geometry_train_cmd = [
-                py,
-                "scripts/train_residual_model.py",
-                "--spec",
-                "geometry",
-                "--max-rows-per-well",
-                str(args.train_rows_per_well),
-                "--max-iter",
-                str(args.max_iter),
-                "--min-fit-fraction",
-                str(args.min_fit_fraction),
-            ]
-            steps.append(("part2_geometry_residual_training", geometry_train_cmd, {}))
         steps.append(("part3_diagnostics", [py, "scripts/build_part3_diagnostics.py"], {}))
         steps.extend(
             [
@@ -362,33 +354,11 @@ def build_steps(args: argparse.Namespace) -> list[tuple[str, list[str], dict[str
             if args.learned_gater_snap_alpha_grid:
                 learned_gater_cmd.append("--snap-alpha-grid")
             steps.append(("part2_learned_gater", learned_gater_cmd, {}))
-        steps.append(("part2_leftover_targets", [py, "scripts/build_leftover_targets.py"], {}))
         if args.with_xgb_leftover:
-            leftover_train_cmd = [
-                py,
-                "scripts/train_residual_model.py",
-                "--spec",
-                "xgb_leftover",
-                "--max-rows-per-well",
-                str(args.train_rows_per_well),
-                "--max-iter",
-                str(args.max_iter),
-                "--learning-rate",
-                str(args.learning_rate),
-                "--max-leaf-nodes",
-                str(args.max_leaf_nodes),
-                "--min-samples-leaf",
-                str(args.min_samples_leaf),
-                "--l2-regularization",
-                str(args.l2),
-                "--min-fit-fraction",
-                str(args.min_fit_fraction),
-            ]
-            if args.require_xgboost:
-                leftover_train_cmd.append("--require-xgboost")
             steps.extend(
                 [
-                    ("part2_xgb_leftover_training", leftover_train_cmd, {}),
+                    ("legacy_leftover_targets", [py, "scripts/build_leftover_targets.py"], {}),
+                    ("legacy_xgb_leftover_training", [py, "scripts/train_residual_model.py", "--spec", "xgb_leftover", "--max-rows-per-well", str(args.train_rows_per_well), "--max-iter", str(args.max_iter), "--learning-rate", str(args.learning_rate), "--max-leaf-nodes", str(args.max_leaf_nodes), "--min-samples-leaf", str(args.min_samples_leaf), "--l2-regularization", str(args.l2), "--min-fit-fraction", str(args.min_fit_fraction)], {}),
                     ("part2_gated_stack", [py, "scripts/build_gated_stack.py"], {}),
                 ]
             )
@@ -460,15 +430,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run the full Part 2 server pipeline from data checks to package creation.")
     parser.add_argument(
         "--residual-spec",
-        choices=["geometry", "xgb", "xgb_leftover"],
+        choices=["geometry", "xgb"],
         default="geometry",
-        help="Full run defaults to geometry residual plus gater; xgb is a direct-residual control; xgb_leftover is the geometry stack layer.",
+        help="Primary residual spec for the completion audit. The default full run trains both geometry and direct xgb candidates.",
     )
     parser.add_argument(
         "--with-gated-pipeline",
         action="store_true",
         default=True,
-        help="Run gated_geometry and leftover-target generation after geometry residual training.",
+        help="Run Part 3 diagnostics plus gated_geometry / learned_gated_geometry after geometry residual training.",
     )
     parser.add_argument(
         "--without-gated-pipeline",
@@ -489,16 +459,28 @@ def main() -> int:
         help="Skip learned gater training and candidate generation.",
     )
     parser.add_argument(
-        "--with-xgb-leftover",
+        "--with-direct-xgb",
         action="store_true",
         default=True,
-        help="Train xgb_leftover and build gated_geometry_plus_xgb_leftover when the gated pipeline is enabled.",
+        help="Train direct XGBoost residual as a parallel residual candidate.",
+    )
+    parser.add_argument(
+        "--without-direct-xgb",
+        action="store_false",
+        dest="with_direct_xgb",
+        help="Skip the direct XGBoost residual candidate.",
+    )
+    parser.add_argument(
+        "--with-xgb-leftover",
+        action="store_true",
+        default=False,
+        help="Legacy experiment only: train xgb_leftover and build gated_geometry_plus_xgb_leftover.",
     )
     parser.add_argument(
         "--without-xgb-leftover",
         action="store_false",
         dest="with_xgb_leftover",
-        help="Skip xgb_leftover training and gated stack build.",
+        help="Skip legacy xgb_leftover training and gated stack build.",
     )
     parser.add_argument("--train-rows-per-well", type=int, default=0, help="0 means use all rows per well for residual training.")
     parser.add_argument("--min-fit-fraction", type=float, default=0.95)

@@ -257,30 +257,6 @@ def candidate_specs() -> list[CandidateSpec]:
             ),
             candidate_type="learned_gated_residual",
         ),
-        CandidateSpec(
-            name="xgb_leftover",
-            kind="stacked_tree_residual",
-            oof_path=OUTPUT_DIR / "residual_xgb_leftover_oof.csv",
-            pred_col="final_pred",
-            submission_path=SUBMISSION_DIR / "xgb_leftover_submission.csv",
-            metadata_paths=(
-                MODEL_DIR / "residual_xgb_leftover_config.json",
-                REPORT_DIR / "residual_xgb_leftover_cv_report.md",
-            ),
-        ),
-        CandidateSpec(
-            name="gated_geometry_plus_xgb_leftover",
-            kind="gated_stack",
-            oof_path=OUTPUT_DIR / "gated_geometry_plus_xgb_leftover_oof.csv",
-            pred_col="final_pred",
-            submission_path=SUBMISSION_DIR / "gated_geometry_plus_xgb_leftover_submission.csv",
-            metadata_paths=(
-                MODEL_DIR / "gated_geometry_plus_xgb_leftover_config.json",
-                REPORT_DIR / "gated_geometry_plus_xgb_leftover_cv_report.md",
-            ),
-            candidate_type="oracle_gated_stack",
-            eligible_for_auto_submission=False,
-        ),
     ]
     blend_path = OUTPUT_DIR / "blend_oof.csv"
     for variant in ("conservative", "balanced", "aggressive", "optimized"):

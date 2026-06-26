@@ -12,15 +12,15 @@
 
 ```text
 baseline
-  -> geometry full-row residual
-  -> oracle per-well alpha gater (`gated_geometry`, diagnostic upper bound)
-  -> learned gater (`learned_gated_geometry`, auto-submission candidate)
-  -> optional XGBoost leftover stack
+  -> geometry full-row residual candidate
+  -> direct XGBoost residual candidate
   -> Part 3 diagnostics / route
+  -> optional oracle/learned gater diagnostics
   -> blend candidates
   -> select_submission_candidate.py
   -> postprocess_predictions.py --variant auto
   -> make_submission.py --variant auto
+  -> validate_submission.py
 ```
 
 最短导出命令：
@@ -97,10 +97,11 @@ rsync -av archive/runs/<run_id>/ ./
 ## 运行时记住三点
 
 - 原始数据优先放 `data/train` / `data/test`，旧布局 `data/raw/train` / `data/raw/test` 也兼容。
-- `gated_geometry` 是 oracle / diagnostic upper bound，默认不允许 auto selection 选它。
-- 当前推荐 gater 是 `learned_gated_geometry`，正式训练必须 `--max-rows-per-well 0`。
-- direct `--spec xgb` 现在只是对照；`xgb_leftover` 是 gater 后的可选 stack 候选。
-- 不要用缺 `xgboost` 时的 HistGradientBoosting fallback 当正式 leaderboard run。
+- 当前主线是 `baseline + residual correction`，不是直接预测绝对 TVT。
+- 默认 full run 会并列训练 `geometry` residual 和 direct `xgb` residual，二者使用同一个 `residual_target = truth_tvt - baseline_tvt`。
+- `gated_geometry` 是 oracle / diagnostic upper bound，默认不允许 auto selection 选它；`learned_gated_geometry` 可保留为可泛化候选。
+- `xgb_leftover` / `gated_geometry_plus_xgb_leftover` 是历史/诊断路线，默认不训练、不选择。
+- 不要用缺 `xgboost` 时的 HistGradientBoosting fallback 当正式 leaderboard run；正式 direct xgb 必须 `--require-xgboost`。
 - 最终提交必须先检查各候选 OOF 覆盖率和 `eligible_for_auto_submission`；共同 OOF 覆盖只作诊断，不用小交集决定最终胜负。
 - postprocess 只有满足 `--min-improvement` guard 时才允许使用。
 - 全量入口 `scripts/run_part2_full_server.py` 每次都会写 `reports/server_part2_full_run_config.md/json`，先看配置快照再解释结果。
