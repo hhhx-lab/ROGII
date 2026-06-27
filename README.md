@@ -110,21 +110,29 @@ python scripts/download_data.py
 
 For a local rerun, use `.venv/bin/python` against the scripts in `scripts/`.
 
-## Repository Layout
+## File Structure
 
 ```text
 .
 |-- README.md
+|-- archive/
 |-- data/
+|-- docs/
+|   |-- operations/
+|   |-- paper/
+|   `-- plans/
+|-- features/
+|-- models/
 |-- notebooks/
-|-- scripts/
-|   |-- download_data.py
-|   |-- blend_predictions.py
-|   |-- postprocess_predictions.py
-|   `-- make_submission.py
+|-- outputs/
+|-- packages/
 |-- reports/
-`-- submission.csv
+|-- scripts/
+|-- server_results/
+`-- submissions/
 ```
+
+论文相关内容统一放在 `docs/paper/`；运行说明放在 `docs/operations/`；方案计划放在 `docs/plans/`。
 
 ## Boundaries
 
