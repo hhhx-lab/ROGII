@@ -185,7 +185,7 @@
   \hfill 学校代码：{\bfseries\underline{\makebox[6em][l]{\,10269}}}
 
   \begin{center}
-    \includegraphics[width=0.73\textwidth]{ecnu_logo}
+    \includegraphics[width=0.73\textwidth]{ecnu_logo_without_title}
 
     \medskip{\linespread{1.0}\selectfont
     \begin{varwidth}[t]{\linewidth}\linespread{1.2}\zihao{1} \@ctitle\end{varwidth}\bigskip
