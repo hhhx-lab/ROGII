@@ -38,14 +38,14 @@ for ROGII Wellbore Geology Prediction}}
 
 \chapter*{摘要}
 \addcontentsline{toc}{chapter}{摘要}
-\noindent 本文以 Kaggle 正式赛题 ROGII - Wellbore Geology Prediction 为研究对象，讨论水平井隐藏尾段 \cvtab{TVT} 的预测问题。基于官方数据与仓库实验报告，本文首先建立尾部斜率外推的基线模型，随后在按井分组的交叉验证框架下比较了基于几何特征的残差回归模型、基于树模型的残差回归模型、学习型门控残差模型以及诊断上界。实验结果表明，基线模型的整体 RMSE 为 119.933，而基于几何特征的残差回归模型可将 RMSE 降至 15.629，并在可泛化候选中取得最佳表现；基于树模型的残差回归模型与学习型门控残差模型均优于基线，但未超过前者。简单集成与后处理未带来进一步改进。结果说明，在该任务中，稳定的数据边界、严格的交叉验证以及候选模型筛选，比单纯增加模型复杂度更为重要。
+\noindent 本文以 Kaggle 正式赛题 ROGII - Wellbore Geology Prediction 为研究对象，讨论水平井隐藏尾段 \cvtab{TVT} 的预测问题。基于官方数据与仓库实验报告，本文首先建立尾部斜率外推的基线模型，随后在按井分组的交叉验证框架下比较了基于几何特征的残差回归模型、基于树模型的残差回归模型、学习型门控残差模型以及诊断上界。实验结果表明，基线模型的整体 RMSE 为 119.933，而基于几何特征的残差回归模型可将 RMSE 降至 15.629，并在可泛化候选中取得最佳表现；基于树模型的残差回归模型与学习型门控残差模型均优于基线，但未超过前者。简单集成与后处理未带来进一步改进。结果说明，在该任务中，稳定的数据边界、严格的交叉验证以及候选模型筛选，比单纯增加模型复杂度更为重要。(\href{https://github.com/hhhx-lab/ROGII}{https://github.com/hhhx-lab/ROGII})
 
 \noindent\textbf{关键词：} Kaggle；井筒地质预测；残差回归；交叉验证；模型筛选
 
 \clearpage
 \chapter*{Abstract}
 \addcontentsline{toc}{chapter}{Abstract}
-\noindent This paper studies the TVT prediction task in the Kaggle competition \cvtab{ROGII - Wellbore Geology Prediction}. Using the official data and repository reports, a tail-slope baseline is first established, followed by comparisons among a geometry-feature residual regressor, a tree-based residual regressor, a learned gating model, and a diagnostic upper bound under well-level GroupKFold validation. The results show that the baseline reaches an overall RMSE of 119.933, while the geometry-feature residual model reduces RMSE to 15.629 and becomes the best deployable candidate. The tree-based residual model and the learned gating model both improve over the baseline but do not outperform the geometry-feature residual model. Simple blending and postprocessing do not yield further gains. These findings indicate that strict validation and candidate selection are more critical than model complexity for this task.
+\noindent This paper studies the TVT prediction task in the Kaggle competition \cvtab{ROGII - Wellbore Geology Prediction}. Using the official data and repository reports, a tail-slope baseline is first established, followed by comparisons among a geometry-feature residual regressor, a tree-based residual regressor, a learned gating model, and a diagnostic upper bound under well-level GroupKFold validation. The results show that the baseline reaches an overall RMSE of 119.933, while the geometry-feature residual model reduces RMSE to 15.629 and becomes the best deployable candidate. The tree-based residual model and the learned gating model both improve over the baseline but do not outperform the geometry-feature residual model. Simple blending and postprocessing do not yield further gains. These findings indicate that strict validation and candidate selection are more critical than model complexity for this task. (\href{https://github.com/hhhx-lab/ROGII}{https://github.com/hhhx-lab/ROGII})
 
 \noindent\textbf{Keywords:} Kaggle; wellbore prediction; residual learning; GroupKFold; model selection
 
