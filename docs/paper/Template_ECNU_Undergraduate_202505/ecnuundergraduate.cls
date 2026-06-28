@@ -19,7 +19,7 @@
 %%%%% layout
 %\RequirePackage[a4paper,includehead,includefoot]{geometry}
 \RequirePackage[a4paper]{geometry}
-\geometry{left=2.6cm,right=2.6cm,top=2.5cm,bottom=2.5cm,headsep=1cm,footskip=10mm}
+\geometry{left=2.6cm,right=2.6cm,top=2.8cm,bottom=2.5cm,headsep=1cm,footskip=10mm}
 
 %%%%% ctex
 %\RequirePackage[UTF8,10pt,heading=true,cap]{ctex}
@@ -91,15 +91,15 @@
 \contentsmargin{2em}
 \titlecontents{chapter}[1em]%
   {\vspace*{1.5ex}\STSong}%
-  {\color{blue}\contentslabel{1em}}%
+  {\color{black}\contentslabel{1em}\color{blue}}%
   {\hspace*{-1em}}%
-  {\hspace{5pt}\titlerule*[8pt]{.}\bfseries\contentspage}%
+  {\hspace{5pt}\titlerule*[8pt]{.}\color{black}\bfseries\contentspage}%
   [\addvspace{-0.0ex}]
 \titlecontents{section}[2.5em]%
   {\vspace*{0ex}}%
-  {\color{blue}\contentslabel[\thecontentslabel]{1.5em}}%
+  {\color{black}\contentslabel[\thecontentslabel]{1.5em}\color{blue}}%
   {\hspace*{-1.0em}}%
-  {\hspace{5pt}\titlerule*[8pt]{.}\contentspage}%
+  {\hspace{5pt}\titlerule*[8pt]{.}\color{black}\contentspage}%
   [\addvspace{-1.0ex}]
 %\titlecontents{subsection}
 %  [7.0em]%
@@ -181,11 +181,13 @@
   \begin{titlepage}\STSong  %%%%% ===== 中文封面
   \phantomsection\pdfbookmark[0]{封面}{ccover}
   \linespread{1.1}\zihao{4}\ziju{0.05}
-  \noindent{\!{\bfseries\@graduateyear}\,届本科生学士学位论文}
+  \noindent{\bfseries\@graduateyear}
   \hfill 学校代码：{\bfseries\underline{\makebox[6em][l]{\,10269}}}
 
   \begin{center}
-    \includegraphics[width=0.73\textwidth]{ecnu_logo_without_title}
+    \vspace{1.0em}
+    \includegraphics[width=0.70\textwidth]{ecnu_logo_without_title}
+    \vspace{2.3em}
 
     \medskip{\linespread{1.0}\selectfont
     \begin{varwidth}[t]{\linewidth}\linespread{1.2}\zihao{1} \@ctitle\end{varwidth}\bigskip
@@ -198,9 +200,6 @@
      ~ & 姓 \hfill 名：& & \ecnumcc{\@cauthor}\\
      ~ & 学 \hfill 号：& & \ecnumcc{\@studentid}\\
      ~ & 学 \hfill 院：& & \ecnumcc{\@caffil } \\
-     ~ & 专 \hfill 业：& & \ecnumcc{\@cmajor}\\
-     ~ & 指\hfill 导\hfill 教\hfill 师：& & \ecnumcc{\@csupervisor}  \\
-     ~ & 职 \hfill 称：& & \ecnumcc{\@academictitle}
     \end{tabular}
 
     \vfill\@cdate

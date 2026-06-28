@@ -52,6 +52,17 @@
 - 提交格式：`id,tvt`，其中 `id = {well}_{row_index}`。
 - 公开可见测试集中的 3 口井与训练井重合，因此它只能用于格式检查与一致性核验，不能作为独立验证集。
 - 官方资料强调：水平井的隐藏段位于预测起点（PS）之后；水平井 GR 的形态延续、与 typewell GR 的对应关系以及井轨迹连续性都可能提供信息。
+- 每口训练井都包含已知段与隐藏尾段；训练样本只在训练井内部构造。`TVT_input` 为空的位置被视为隐藏尾段目标行，`truth_tvt` 来自训练 horizontal 的真实 `TVT`，`baseline_tvt` 来自尾部外推基线，`residual_target = truth_tvt - baseline_tvt`。
+- 公开可见测试集也具有已知段与隐藏尾段的结构，但由于 3 口公开可见测试井与训练井重合，它不能作为独立验证集；正式模型选择必须使用训练井上的 GroupKFold / OOF 结果。
+- `data_paths.py` 同时支持 `data/train`、`data/test` 与 `data/raw/train`、`data/raw/test` 两种目录布局；若 `sample_submission.csv` 不存在，则可由 `data/test` 中 `TVT_input` 缺失的隐藏行合成提交 id。
+
+### 2.5 训练、验证与 RMSE 口径
+
+- 训练集的“样本”不是整口井，而是训练 horizontal 中 `TVT_input` 缺失的隐藏尾段行；每个隐藏行都同时保留 `well`、`row` 和 `id` 以便按井分组验证。
+- 训练井内部先构造 `truth_tvt`、`baseline_tvt` 与 `residual_target`，再在同一批隐藏行上做 GroupKFold；同一口井不会同时出现在训练折和验证折。
+- 公开可见测试集不参与调参，也不作为独立验证集。它只有 3 口井，且与训练井重合，因此只用于格式核验与脚本一致性检查。
+- 论文中列出的 RMSE 数值（例如基线 119.933、几何残差 15.629、树残差 31.473）均来自训练井上的交叉验证预测，即以验证折上的 `truth_tvt` 与 `final_pred` 计算得到的 OOF 指标；不是 Kaggle 官方 hidden test 的最终分数。
+- 交叉验证时，各候选模型使用同一套按井分组的 folds，便于直接比较。
 
 ### 2.1 数据规模
 
@@ -155,6 +166,9 @@ TVT, GR
 - 773 口训练井的隐藏区间均为单尾段，因此按井分组的交叉验证是合理的验证方式。
 - 隐藏尾段越长，基线模型越容易失效；baseline 的平均误差随 target rows bucket 明显上升。
 - typewell 的 `Geology` 标签分布极不均衡，最大类 `ANCC` 为 294,268，最小类 `EGFD200` 为 1。
+- `baseline_features_train.csv` 与 `baseline_features_test.csv` 以 `(well, row)` 对齐隐藏行，显式保留 `known_rows`、`target_rows`、`known_ratio`、`target_ratio`、`last_known_row`、`last_known_md`、`last_known_tvt`、`distance_from_last_known_row`、`distance_from_last_known_md`、`baseline_slope_median`、`baseline_slope_std`、`baseline_confidence`、`gr_missing_rate`、`baseline_pred_delta_from_last_known`、`baseline_md_step`、`baseline_tvt_step` 等列。
+- `geometry_features_train.csv` 与 `geometry_features_test.csv` 在基线特征上继续加入轨迹坐标的中心化与标准化、差分量、速度/曲率 proxy、路径长度归一化以及滚动统计；滚动窗口在代码中取 25、50、100、200、500。
+- `typewell_features_*` 与 `alignment_features_*` 继续加入 GR 插值、局部梯度、窗口统计、对齐偏移、相似度与对齐置信度等特征，用于门控与集成候选。
 
 ### 3.3 基线难点分层
 
@@ -165,6 +179,15 @@ TVT, GR
 | 4k-6k | 57.833 |
 | 6k-8k | 91.024 |
 | 8k-12k | 122.556 |
+
+### 3.4 预处理与特征工程
+
+- 训练与测试首先完成字段对齐：训练 horizontal 包含 `ANCC`、`ASTNU`、`ASTNL`、`EGFDU`、`EGFDL`、`BUDA` 等训练-only 列，测试 horizontal 不包含这些列，因此正式测试输入只保留测试阶段可见字段。
+- 基线特征以 `(well, row)` 对齐隐藏行，显式保留 `known_rows`、`target_rows`、`known_ratio`、`target_ratio`、`last_known_row`、`last_known_md`、`last_known_tvt`、距离类变量、斜率统计、`baseline_confidence`、`gr_missing_rate` 以及基线步长等信息。
+- 几何特征在基线特征基础上继续加入 `MD`、`X`、`Y`、`Z` 的中心化 / 标准化、差分量、速度和曲率 proxy、路径长度归一化，以及滚动统计；代码中滚动窗口取 25、50、100、200、500。
+- typewell / alignment 特征加入 GR 插值、局部梯度、窗口统计、对齐偏移、相似度、相似度差值和对齐置信度，用于门控与集成候选。
+- 线性残差模型前先进行标准化，采用 `StandardScaler + SGDRegressor`。
+- 残差目标统一定义为 `residual_target = truth_tvt - baseline_tvt`；后续树模型、门控和集成候选都围绕这一残差目标展开，而不是直接改为绝对 TVT 预测。
 
 ## 4. 方法与实验设置
 
@@ -187,6 +210,12 @@ TVT, GR
 - 交叉验证预测是模型选择的依据。
 - 公开可见测试集不参与调参。
 - `gated_geometry` 只作为诊断上界，不参与自动提交排序。
+- `GroupKFold` 的分组单位是井；同一口井不会同时出现在训练折和验证折。脚本默认 `n_splits=5`，实际会被限制在 `[2, unique_wells]` 区间内。
+- 残差训练中使用了按井归一化的样本权重，规则为 `1 / sqrt(该井在训练块中的行数)`，随后再归一化到总和与样本数一致，以避免长井在损失中占比过大。
+- 线性残差模型采用 `StandardScaler + SGDRegressor`；当前保守参数为 `alpha=0.0005`、`max_iter=30`、`tol=1e-3`、`early_stopping=True`、`validation_fraction=0.1`、`n_iter_no_change=3`、`average=True`。这些参数是基于训练集 OOF 表现选定的，并不是大规模网格搜索的结果。
+- 树模型残差回归优先使用 `XGBRegressor`；当前保守参数为 `n_estimators=30`、`max_depth=4`、`learning_rate=0.05`、`subsample=0.9`、`colsample_bytree=0.9`、`reg_lambda=1.0`、`tree_method=hist`、`n_jobs=1`。参数选择同样以 OOF 表现为依据，目标是降低过拟合风险。
+- `learned_gated_geometry` 使用 `ridge` 作为门控学习器，特征列数为 27；`gated_geometry` 仅做 alpha 网格 `[0.0, 0.25, 0.5, 0.75, 1.0]` 的上界分析，其中 `alpha=1.0` 对应最优 OOF。
+- `geometry` 与 `xgb` 都使用全量训练行，`train_rows_per_well = 0`，`fit_fraction = 1.000`。当代码层面出现分段抽样实验时，会通过 `min_fit_fraction=0.95` 护栏避免在正文候选里混入过低覆盖率的训练结果。
 
 ### 4.3 主要超参数与设置
 
@@ -205,8 +234,11 @@ TVT, GR
 - `geometry` 的覆盖率与 baseline 完全一致（1.000 / 1.000），因此可以进入正式排序。
 - `gated_geometry` 的交叉验证预测更低，但属于诊断上界，不作为最终提交模型。
 - 后处理采用交叉验证保护：若后处理后 RMSE 变差，则不保留后处理结果。
+- `geometry` 上的 alpha 显式搜索点为 `0.0、0.25、0.5、0.75、1.0`；其中 `alpha=1.0` 对应最佳 OOF。
 
 ## 5. 主要结果
+
+> 本节中的 RMSE、MAE、P95 等数值均来自训练井上的 GroupKFold / OOF 评估，不是 Kaggle 官方 hidden test 的最终分数。
 
 ### 5.1 核心模型比较
 
