@@ -45,7 +45,7 @@ for ROGII Wellbore Geology Prediction}}
 \clearpage
 \chapter*{Abstract}
 \addcontentsline{toc}{chapter}{Abstract}
-\noindent This paper studies the TVT prediction task in the Kaggle competition \cvtab{ROGII - Wellbore Geology Prediction}. Using the official data and repository reports, we first establish a tail-slope baseline and then compare a geometry-feature residual regressor, a tree-based residual regressor, a learned gating model, and a diagnostic upper bound under well-level GroupKFold validation. The results show that the baseline reaches an overall RMSE of 119.933, while the geometry-feature residual model reduces RMSE to 15.629 and becomes the best deployable candidate. The tree-based residual model and the learned gating model both improve over the baseline but do not outperform the geometry-feature residual model. Simple blending and postprocessing do not yield further gains. These findings indicate that strict validation and candidate selection are more critical than model complexity for this task.
+\noindent This paper studies the TVT prediction task in the Kaggle competition \cvtab{ROGII - Wellbore Geology Prediction}. Using the official data and repository reports, a tail-slope baseline is first established, followed by comparisons among a geometry-feature residual regressor, a tree-based residual regressor, a learned gating model, and a diagnostic upper bound under well-level GroupKFold validation. The results show that the baseline reaches an overall RMSE of 119.933, while the geometry-feature residual model reduces RMSE to 15.629 and becomes the best deployable candidate. The tree-based residual model and the learned gating model both improve over the baseline but do not outperform the geometry-feature residual model. Simple blending and postprocessing do not yield further gains. These findings indicate that strict validation and candidate selection are more critical than model complexity for this task.
 
 \noindent\textbf{Keywords:} Kaggle; wellbore prediction; residual learning; GroupKFold; model selection
 
@@ -192,7 +192,7 @@ r = y - \hat y_{\mathrm{base}},
 \hat y = \hat y_{\mathrm{base}} + \hat r(x).
 \]
 
-其中，\(x\) 表示可用于测试阶段的几何信息、已知段长度、\cvtab{GR} 缺失结构及若干滚动统计量。基于几何特征的残差回归模型采用标准化后的线性回归器，其主要参数为 \(\alpha=0.0005\)、\(\texttt{max\_iter}=30\)、\(\texttt{tol}=10^{-3}\)、\(\texttt{early\_stopping}=True\)、\(\texttt{validation\_fraction}=0.1\)、\(\texttt{n\_iter\_no\_change}=3\) 与 \(\texttt{average}=True\)。该模型在训练井上按井分组进行交叉验证，避免同一口井同时出现在训练与验证两侧。
+其中，\(x\) 表示可用于测试阶段的几何信息、已知段长度、\cvtab{GR} 缺失结构及若干滚动统计量。基于几何特征的残差回归模型采用标准化后的线性回归器，其主要参数为 \(\alpha=5\times10^{-4}\)、\(\texttt{max\_iter}=30\)、\(\texttt{tol}=10^{-3}\)、\(\texttt{early\_stopping}=True\)、\(\texttt{validation\_fraction}=0.1\)、\(\texttt{n\_iter\_no\_change}=3\) 与 \(\texttt{average}=True\)。该模型在训练井上按井分组进行交叉验证，避免同一口井同时出现在训练与验证两侧。
 训练时还对每口井使用按行数归一化的样本权重，以减少长井对损失函数的支配；在最终可泛化候选中，几何残差模型与树模型都采用全量训练行进行拟合，而不是先做强行抽样。
 后续的树模型、门控模型与集成候选也都沿用同一残差目标与同一交叉验证口径，因此各候选的 RMSE 可以直接比较。
 
@@ -346,7 +346,7 @@ XGBoost 采用较为保守的参数设置，目的不是追求极端拟合，而
 训练 horizontal EGFDL missing rate & 0.120\% & 训练-only 地层列少量缺失 \\
 target rows min / median / max & 407 / 4,840 / 10,052 & 隐藏尾段长度跨度大 \\
 known rows min / median / max & 851 / 1,703 / 2,392 & 已知段长度相对较短 \\
-target GR missing q0 / q25 / q50 / q75 / q90 / max & 0.0067 / 0.1308 / 0.3029 / 0.4977 / 0.5946 / 0.8118 & 目标段 GR 缺失率分布 \\
+target GR missing q0 / q25 / q50 / q75 / q90 / max & 0.007 / 0.131 / 0.303 / 0.498 / 0.595 / 0.812 & 目标段 GR 缺失率分布 \\
 \bottomrule
 \end{tabularx}
 \caption{数据统计补充}
@@ -416,11 +416,11 @@ target rows bucket & wells & mean RMSE & median RMSE & max RMSE \\
 \toprule
 alpha & RMSE & MAE & P95 abs error & 说明 \\
 \midrule
-1.00 & 15.6288 & 11.1732 & 31.9450 & 选定值 \\
-0.75 & 33.6079 & 18.2440 & 57.6606 & 明显变差 \\
-0.50 & 61.4914 & 29.3052 & 97.7526 & 明显变差 \\
-0.25 & 90.5503 & 41.2999 & 140.5640 & 明显变差 \\
-0.00 & 119.9330 & 53.6804 & 182.7800 & 退化为基线 \\
+1.00 & 15.629 & 11.173 & 31.945 & 选定值 \\
+0.75 & 33.608 & 18.244 & 57.661 & 明显变差 \\
+0.50 & 61.491 & 29.305 & 97.753 & 明显变差 \\
+0.25 & 90.550 & 41.300 & 140.564 & 明显变差 \\
+0.00 & 119.933 & 53.680 & 182.780 & 退化为基线 \\
 \bottomrule
 \end{tabular}
 \caption{几何残差模型的 alpha 搜索结果}
@@ -454,11 +454,11 @@ conservative & 109.595 & - & 变差 & 不优于 geometry \\
 \toprule
 候选 & 状态 & OOF RMSE & 覆盖率 & 说明 \\
 \midrule
-geometry & selected & 15.6288 & 1.000 / 1.000 & 完整覆盖下 RMSE 最低 \\
-xgb & valid & 31.4731 & 1.000 / 1.000 & 可泛化但不优于 geometry \\
-learned\_gated\_geometry & valid & 19.8180 & 1.000 / 1.000 & 可泛化但不优于 geometry \\
-gated\_geometry & skipped & 13.3807 & 1.000 / 1.000 & 诊断上界，自动选择中排除 \\
-geometry\_postprocessed & rejected & 69.9255 & 1.000 / 1.000 & 后处理护栏失败 \\
+geometry & selected & 15.629 & 1.000 / 1.000 & 完整覆盖下 RMSE 最低 \\
+xgb & valid & 31.473 & 1.000 / 1.000 & 可泛化但不优于 geometry \\
+learned\_gated\_geometry & valid & 19.818 & 1.000 / 1.000 & 可泛化但不优于 geometry \\
+gated\_geometry & skipped & 13.381 & 1.000 / 1.000 & 诊断上界，自动选择中排除 \\
+geometry\_postprocessed & rejected & 69.926 & 1.000 / 1.000 & 后处理护栏失败 \\
 \bottomrule
 \end{tabularx}
 \caption{候选筛选结果补充}
@@ -471,14 +471,14 @@ geometry\_postprocessed & rejected & 69.9255 & 1.000 / 1.000 & 后处理护栏�
 \toprule
 well & rows & RMSE & baseline RMSE & 相对 baseline \\
 \midrule
-1b1eba53 & 4,655 & 69.3534 & 21.9863 & -47.3672 \\
-86454a6f & 7,964 & 64.3403 & 29.6178 & -34.7225 \\
-5f4d2a52 & 5,225 & 59.4918 & 116.7140 & 57.2222 \\
-2fd68f7b & 4,730 & 58.8138 & 113.3370 & 54.5234 \\
-ba48188d & 4,166 & 52.9596 & 74.5768 & 21.6172 \\
-f88ddb26 & 4,990 & 51.8977 & 24.2101 & -27.6876 \\
-fef8af96 & 3,826 & 48.1773 & 110.5840 & 62.4067 \\
-43e16325 & 3,720 & 44.2896 & 45.7767 & 1.4871 \\
+1b1eba53 & 4,655 & 69.353 & 21.986 & -47.367 \\
+86454a6f & 7,964 & 64.340 & 29.618 & -34.723 \\
+5f4d2a52 & 5,225 & 59.492 & 116.714 & 57.222 \\
+2fd68f7b & 4,730 & 58.814 & 113.337 & 54.523 \\
+ba48188d & 4,166 & 52.960 & 74.577 & 21.617 \\
+f88ddb26 & 4,990 & 51.898 & 24.210 & -27.688 \\
+fef8af96 & 3,826 & 48.177 & 110.584 & 62.407 \\
+43e16325 & 3,720 & 44.290 & 45.777 & 1.487 \\
 \bottomrule
 \end{tabular}
 \caption{候选筛选后最差井的典型样例}
@@ -491,21 +491,21 @@ fef8af96 & 3,826 & 48.1773 & 110.5840 & 62.4067 \\
 \clearpage
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.95\textwidth,height=0.76\textheight,keepaspectratio]{../../reports/figures/baseline_worst_wells/03_a959858c.png}
+\includegraphics[width=0.95\textwidth,height=0.76\textheight,keepaspectratio]{figures/baseline_worst_a959858c.png}
 \caption{基线最差井示例：a959858c}
 \end{figure}
 
 \clearpage
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.95\textwidth,height=0.76\textheight,keepaspectratio]{../../reports/figures/residual_geometry_best_improved/01_a959858c.png}
+\includegraphics[width=0.95\textwidth,height=0.76\textheight,keepaspectratio]{figures/geometry_best_improved_a959858c.png}
 \caption{几何残差模型最佳改进井示例：a959858c}
 \end{figure}
 
 \clearpage
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.95\textwidth,height=0.76\textheight,keepaspectratio]{../../reports/figures/residual_geometry_worst_degraded/01_1b1eba53.png}
+\includegraphics[width=0.95\textwidth,height=0.76\textheight,keepaspectratio]{figures/geometry_worst_degraded_1b1eba53.png}
 \caption{几何残差模型最差退化井示例：1b1eba53}
 \end{figure}
 

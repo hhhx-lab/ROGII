@@ -1,6 +1,0 @@
-# make_cv_splits
-$ 'C:\Users\31745\Desktop\新建文件夹 (6)\ROGII\.venv\Scripts\python.exe' scripts/make_cv_splits.py
-
-Wrote C:\Users\31745\Desktop\新建文件夹 (6)\ROGII\outputs\cv_splits.csv
-Wrote C:\Users\31745\Desktop\新建文件夹 (6)\ROGII\reports\cv_design.md
-mask_types=7 min_wells_per_type=773

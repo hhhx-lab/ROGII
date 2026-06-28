@@ -1,7 +1,0 @@
-# data_contract
-$ 'C:\Users\31745\Desktop\新建文件夹 (6)\ROGII\.venv\Scripts\python.exe' scripts/check_data_contract.py
-
-Wrote C:\Users\31745\Desktop\新建文件夹 (6)\ROGII\outputs\data_contract_summary.csv
-Wrote C:\Users\31745\Desktop\新建文件夹 (6)\ROGII\outputs\data_version.json
-Wrote C:\Users\31745\Desktop\新建文件夹 (6)\ROGII\reports\data_contract_report.md
-critical_errors=0 warnings=11

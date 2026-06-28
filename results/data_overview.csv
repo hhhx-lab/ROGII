@@ -1,0 +1,9 @@
+item,value,description
+train_wells,773,training wells used for GroupKFold validation
+visible_test_wells,3,visible test wells used only for format checks
+sample_submission_rows,14151,rows in Kaggle sample submission
+train_horizontal_rows,5092255,total rows in training horizontal files
+train_hidden_target_rows,3783989,hidden tail rows used for OOF evaluation
+train_typewell_files,773,one typewell file per training well
+train_horizontal_gr_missing_rate,29.610%,GR missing rate in training horizontal data
+train_horizontal_tvt_input_missing_rate,74.310%,TVT_input missing rate in training horizontal data

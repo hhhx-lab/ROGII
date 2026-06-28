@@ -1,146 +1,57 @@
-<div align="center">
+# ROGII
 
-# ROG-II-
+ROGII 是围绕 Kaggle 竞赛 `ROGII - Wellbore Geology Prediction` 整理的课程项目。任务目标是根据水平井井轨迹、已知段测井信息和参考地层信息，预测隐藏尾段的 `TVT`。
 
-**An engineering workspace for reproducible wellbore geology prediction.**
+## 任务说明
 
-![Kaggle Competition](https://img.shields.io/badge/Kaggle-Competition-20BEFF?style=flat-square)
-![Task](https://img.shields.io/badge/Task-TVT%20Prediction-7c3aed?style=flat-square)
-![Data](https://img.shields.io/badge/Data-Horizontal%20Wells-059669?style=flat-square)
-![Workflow](https://img.shields.io/badge/Workflow-Notebook%20Only-111827?style=flat-square)
+该任务属于井筒地质预测问题。主要难点包括隐藏尾段长度差异较大、`TVT_input` 缺失比例较高、训练集与正式预测阶段可用字段并不完全一致。实现难度为中等偏高，关键工作在于数据边界控制、按井分组交叉验证、残差建模和候选模型筛选，而不是单一模型拟合。
 
-`kaggle competitions download -c rogii-wellbore-geology-prediction`
+## 代码结构
 
-</div>
+- `data/`：本地数据入口，原始数据放在本地 `data/raw/`，不随 Git 上传。
+- `scripts/`：数据检查、特征构造、模型训练、候选筛选和提交导出脚本。
+- `models/`：模型配置与特征清单。
+- `results/`：与论文一一对应的精简结果表和最终提交文件。
+- `docs/paper/`：论文源码、论文 PDF、模板、配图和成员分工文件。
 
-> Build a defensible TVT prediction workflow, not just a one-off Kaggle submission.
+## 模型运行
 
-This repository is the working base for the Kaggle competition **ROGII - Wellbore Geology Prediction**. The goal is to predict **TVT (True Vertical Thickness)** for horizontal well evaluation zones using trajectory, log, and vertical reference data, with a workflow strong enough to compete for the top of the leaderboard.
-
-The competition is a notebook-only code contest with RMSE scoring. Kaggle exposes the public description, the data bundle, and the submission format through the competition page. This repo treats that setup as an engineering problem: define the data contracts, build a validation loop that mimics hidden wells, keep a simple baseline as a control, and only promote models that improve in a measurable and explainable way.
-
-The current workspace already contains the local pieces needed to build a submission loop:
-
-- tail-slope baseline;
-- geometry residual model;
-- route-aware Part 3 correction diagnostics;
-- blend / postprocess / final submission scripts;
-- a Kaggle notebook scaffold.
-
-## Competition Brief
-
-ROGII asks participants to build a model for drilling-time geology prediction. The data includes horizontal well trajectories, geological surfaces, well logs, typewell reference logs, and per-well visualizations. The hidden test set replaces the visible sample data when Kaggle re-runs a submission.
-
-## Engineering Method
-
-The project direction is deliberately practical:
-
-- use `TVT_input` continuation as the control baseline;
-- validate on the hidden rows already present in training wells before trusting any model;
-- add GR, geometry, and typewell features only when they improve the baseline under cross-validation;
-- use Part 3 as a gated correction layer on top of baseline, not as a separate competing model;
-- report errors by well and by failure type, not only by one aggregate RMSE;
-- keep the final notebook deterministic and runnable with Kaggle internet disabled;
-- treat each leaderboard submission as a tracked experiment with a local CV score and a hypothesis.
-
-## What You Get
-
-| Item | Details |
-|---|---|
-| Competition summary | A concise, local README for the Kaggle task |
-| Data download path | A repeatable Kaggle download command and script |
-| Working data folder | Local files under `data/` after download |
-| Project hygiene | Large data stays out of git history |
-| Submission loop | Local scripts that end in `submission.csv` |
-
-## Capability Matrix
-
-| Capability | What it covers | Why it matters |
-|---|---|---|
-| Competition overview | Problem, score, timeline, and constraints | Gives the team one shared source of truth |
-| Data layout | `data/train/`, `data/test/`, file types, and targets | Makes the first preprocessing pass easier |
-| Download workflow | Kaggle web/API path plus local script | Turns access into a repeatable step |
-| Model plan | Baseline, residual, GR/typewell, ensemble | Shows how the project will improve step by step |
-| Repo hygiene | Ignores giant artifacts and temp files | Keeps the repo practical to clone and review |
-
-## Workflow
-
-```text
-Kaggle competition page
-  |
-  v
-Read public problem statement and data schema
-  |
-  v
-Download competition bundle locally
-  |
-  v
-Inspect train/test files and sample submission
-  |
-  v
-Build features, validate RMSE, submit notebooks
-```
-
-## Key Rules
-
-- Metric: root mean squared error (RMSE).
-- Submission format: `id,tvt`.
-- Submission channel: Kaggle Notebooks only.
-- Runtime limits: CPU <= 9 hours, GPU <= 9 hours.
-- Internet access: disabled in submissions.
-- External data: freely and publicly available data is allowed.
-
-## Data Layout
-
-The working data is organized under `data/train/` and `data/test/` folders. Each well is identified by an 8-character hash. Public preview data includes:
-
-- `__horizontal_well.csv` for trajectory and log data;
-- `__typewell.csv` for vertical reference logs;
-- `.png` visualizations for training wells;
-- `sample_submission.csv` for the target format.
-
-## Local Download
+原始数据体积较大，不上传到 GitHub。本地运行前需放入 `data/raw/`；若本地缺少原始数据，需在接受 Kaggle 竞赛规则并完成本地认证后重新下载。
 
 ```bash
-python -m venv .venv
-.venv/bin/pip install --upgrade pip kaggle
-kaggle auth login
 python scripts/download_data.py
+python scripts/check_data_contract.py
+python scripts/make_cv_splits.py
+python scripts/evaluate_baseline_cv.py
+python scripts/build_baseline_features.py
+python scripts/build_geometry_features.py
+python scripts/train_residual_model.py --spec geometry
+python scripts/train_residual_model.py --spec xgb --tree-backend auto
+python scripts/evaluate_model_cv.py
+python scripts/build_part3_diagnostics.py
+python scripts/build_gated_geometry.py
+python scripts/train_learned_gater.py
+python scripts/blend_predictions.py
+python scripts/postprocess_predictions.py
+python scripts/select_submission_candidate.py --dry-run
+python scripts/make_submission.py --variant auto --output results/final_submission.csv
+python scripts/validate_submission.py --submission results/final_submission.csv
 ```
 
-For a local rerun, use `.venv/bin/python` against the scripts in `scripts/`.
+## 结果文件
 
-## File Structure
+- 数据概览：`results/data_overview.csv`
+- 模型对比：`results/model_comparison.csv`
+- 门控搜索：`results/alpha_search.csv`
+- 集成比较：`results/ensemble_comparison.csv`
+- 候选筛选：`results/candidate_selection.csv`
+- 后处理比较：`results/postprocess_comparison.csv`
+- 最终提交：`results/final_submission.csv`
+- 格式与复现检查：`results/format_and_reproducibility_check.md`
 
-```text
-.
-|-- README.md
-|-- archive/
-|-- data/
-|-- docs/
-|   |-- operations/
-|   |-- paper/
-|   `-- plans/
-|-- features/
-|-- models/
-|-- notebooks/
-|-- outputs/
-|-- packages/
-|-- reports/
-|-- scripts/
-|-- server_results/
-`-- submissions/
-```
+## 成员分工
 
-论文相关内容统一放在 `docs/paper/`；运行说明放在 `docs/operations/`；方案计划放在 `docs/plans/`。
-
-## Boundaries
-
-This repo keeps the competition data local. The raw bundle is too large for git, so the repository only tracks the downloader and the working notes. Kaggle access still depends on an authenticated account that has accepted the competition rules.
-
-The helper in `scripts/data_paths.py` resolves the current `data/` layout and also tolerates an older `data/raw/` layout if it still appears in another environment.
-
-## Source
-
-- [Kaggle competition page](https://www.kaggle.com/competitions/rogii-wellbore-geology-prediction)
-- [Kaggle data page](https://www.kaggle.com/competitions/rogii-wellbore-geology-prediction/data)
+- 翁凯乐（10245001419）：数据下载、数据契约检查、数据统计与描述整理。
+- 何剑宝（10245001417）：基线模型、几何残差回归模型与树模型训练。
+- 冯炳睿（10245001411）：门控模型、集成实验、候选筛选与后处理比较。
+- 万席宁（10245001421）：论文撰写、图表整理、格式核对与最终提交文件归档。

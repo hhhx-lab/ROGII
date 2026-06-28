@@ -1,7 +1,0 @@
-# baseline_multimask
-$ 'C:\Users\31745\Desktop\新建文件夹 (6)\ROGII\.venv\Scripts\python.exe' scripts/evaluate_baseline_multimask.py
-
-Wrote C:\Users\31745\Desktop\新建文件夹 (6)\ROGII\outputs\baseline_multimask_by_split.csv
-Wrote C:\Users\31745\Desktop\新建文件夹 (6)\ROGII\outputs\baseline_multimask_overall.csv
-Wrote C:\Users\31745\Desktop\新建文件夹 (6)\ROGII\reports\baseline_multimask_report.md
-splits=5411 mask_types=7

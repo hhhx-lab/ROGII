@@ -1,0 +1,6 @@
+candidate,status,oof_rmse,row_coverage,well_coverage,explanation
+geometry,selected,15.629,1.000,1.000,lowest full-coverage OOF RMSE among deployable candidates
+xgb,valid,31.473,1.000,1.000,deployable but worse than geometry
+learned_gated_geometry,valid,19.818,1.000,1.000,deployable but worse than geometry
+gated_geometry,skipped,13.381,1.000,1.000,diagnostic upper bound excluded from automatic selection
+geometry_postprocessed,rejected,69.926,1.000,1.000,postprocess guard failed under OOF evaluation

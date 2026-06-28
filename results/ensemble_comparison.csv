@@ -1,0 +1,6 @@
+candidate,rmse,conclusion
+geometry_residual,15.629,reference candidate
+optimized,15.629,tied with geometry residual
+balanced,42.223,worse than geometry residual
+aggressive,59.901,worse than geometry residual
+conservative,109.595,worse than geometry residual

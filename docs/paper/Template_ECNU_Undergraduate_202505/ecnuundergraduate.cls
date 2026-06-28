@@ -58,7 +58,7 @@
 \newcommand{\hei}{\heiti}
 \newcommand{\kai}{\kaishu}
 \newcommand{\you}{\youyuan}
-\setCJKfamilyfont{STSong}{Songti SC}\newcommand{\STSong}{\CJKfamily{STSong}}
+\setCJKfamilyfont{STSong}{SimSun}\newcommand{\STSong}{\CJKfamily{STSong}}
 
 %%%% math and references
 \RequirePackage{amsmath}

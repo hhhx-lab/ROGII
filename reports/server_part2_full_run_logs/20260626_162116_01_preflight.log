@@ -1,6 +1,0 @@
-# preflight
-$ 'C:\Users\31745\Desktop\新建文件夹 (6)\ROGII\.venv\Scripts\python.exe' scripts/server_part2_preflight.py
-
-Wrote C:\Users\31745\Desktop\新建文件夹 (6)\ROGII\reports\server_part2_preflight_report.md
-checks=23 failures=0 warnings=2
-Preflight passed. Warnings are allowed unless --strict is used.

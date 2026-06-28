@@ -1,6 +1,0 @@
-# part1_baseline_cv
-$ 'C:\Users\31745\Desktop\新建文件夹 (6)\ROGII\.venv\Scripts\python.exe' scripts/evaluate_baseline_cv.py
-
-Wrote C:\Users\31745\Desktop\新建文件夹 (6)\ROGII\outputs\baseline_cv_by_well.csv
-Wrote C:\Users\31745\Desktop\新建文件夹 (6)\ROGII\reports\baseline_cv_report.md
-overall_rmse=119.9333

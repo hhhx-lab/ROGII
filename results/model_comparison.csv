@@ -1,0 +1,6 @@
+method,role,rmse,mae,p95_abs_error,improved_wells,degraded_wells,status
+baseline_tail_slope,baseline,119.933,53.680,182.780,,,baseline
+geometry_residual,linear_residual_regression,15.629,11.173,31.945,632,141,selected
+xgb_residual,tree_residual_regression,31.473,13.748,34.654,626,147,valid
+learned_gated_geometry,learned_gated_residual,19.818,13.984,41.698,653,120,valid
+gated_geometry,diagnostic_upper_bound,13.381,9.468,27.353,670,0,diagnostic_only
